@@ -1,0 +1,14 @@
+services:
+  salespulsebi:
+    build: .
+    ports:
+      - "8420:8420"
+    volumes:
+      - salespulsebi_data:/data
+      # Mount your local sales folders read-only to link them directly in the UI:
+      # - ./my_sales_folder:/sales_data:ro
+    environment:
+      - SALESPULSEBI_DATA_DIR=/data
+
+volumes:
+  salespulsebi_data:

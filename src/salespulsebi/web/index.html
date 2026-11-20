@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SalesPulseBI — Local-First Sales Intelligence</title>
+  <link rel="stylesheet" href="/static/css/tokens.css" />
+  <link rel="stylesheet" href="/static/css/layout.css" />
+  <link rel="stylesheet" href="/static/css/components.css" />
+  <script src="/static/vendor/echarts.min.js"></script>
+</head>
+<body>
+  <div id="app" class="app-shell">
+    <!-- Top Header / Global Bar -->
+    <header class="topbar">
+      <div class="topbar-left">
+        <button id="btn-home" class="brand-btn" title="Project Hub">
+          <svg width="24" height="24" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+            <rect width="32" height="32" rx="8" fill="url(#sp_grad)" />
+            <path d="M6 20L11.5 14.5L16 18L21.5 10L26 13" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="21.5" cy="10" r="2" fill="#34D399"/>
+            <defs>
+              <linearGradient id="sp_grad" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#6366F1"/>
+                <stop offset="1" stop-color="#10B981"/>
+              </linearGradient>
+            </defs>
+          </svg>
+          <span class="brand-name">SalesPulse<strong>BI</strong></span>
+        </button>
+
+        <div id="active-project-crumb" class="project-crumb hidden">
+          <span class="crumb-sep">/</span>
+          <span id="crumb-project-name" class="crumb-title"></span>
+          <span id="crumb-project-meta" class="pill pill-muted"></span>
+        </div>
+      </div>
+
+      <div class="topbar-right">
+        <div id="project-actions-bar" class="topbar-group hidden">
+          <button id="btn-sync-now" class="btn btn-secondary btn-sm">
+            <span class="icon">↻</span>
+            <span data-i18n="sync_now">Sincronizar</span>
+          </button>
+          <div class="dropdown">
+            <button id="btn-export-menu" class="btn btn-secondary btn-sm">
+              <span data-i18n="export">Exportar</span> ▾
+            </button>
+            <div id="export-dropdown" class="dropdown-menu hidden">
+              <button class="dropdown-item" data-export="html-report" data-i18n="export_html">Reporte Ejecutivo (HTML/PDF)</button>
+              <button class="dropdown-item" data-export="xlsx" data-i18n="export_xlsx">Excel (.xlsx)</button>
+              <button class="dropdown-item" data-export="csv" data-i18n="export_csv">CSV Limpio (.csv)</button>
+              <button class="dropdown-item" data-export="parquet" data-i18n="export_parquet">Parquet (.parquet)</button>
+            </div>
+          </div>
+        </div>
+
+        <button id="btn-lang-toggle" class="btn btn-ghost btn-sm" title="Switch Language">
+          <span id="lang-label">ES</span>
+        </button>
+        <button id="btn-theme-toggle" class="btn btn-ghost btn-sm" title="Toggle Theme">
+          <span id="theme-icon">☀</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Workspace Body -->
+    <div class="workspace-body">
+      <!-- Sidebar (shown when a project is active) -->
+      <aside id="sidebar" class="sidebar hidden">
+        <nav class="nav-list">
+          <button class="nav-item active" data-tab="overview">
+            <span class="nav-icon">◈</span>
+            <span data-i18n="nav_overview">Resumen</span>
+          </button>
+          <button class="nav-item" data-tab="timeseries">
+            <span class="nav-icon">📈</span>
+            <span data-i18n="nav_timeseries">Tiempo & Pronóstico</span>
+            <span class="lock-badge hidden" data-lock="timeseries">🔒</span>
+          </button>
+          <button class="nav-item" data-tab="products">
+            <span class="nav-icon">◫</span>
+            <span data-i18n="nav_products">Productos & ABC</span>
+            <span class="lock-badge hidden" data-lock="products">🔒</span>
+          </button>
+          <button class="nav-item" data-tab="customers">
+            <span class="nav-icon">◎</span>
+            <span data-i18n="nav_customers">Clientes & RFM</span>
+            <span class="lock-badge hidden" data-lock="customers">🔒</span>
+          </button>
+          <button class="nav-item" data-tab="dimensions">
+            <span class="nav-icon">❖</span>
+            <span data-i18n="nav_dimensions">Canales & Ad-Hoc</span>
+          </button>
+          <button class="nav-item" data-tab="data_studio">
+            <span class="nav-icon">⚙</span>
+            <span data-i18n="nav_data_studio">Data Studio</span>
+          </button>
+        </nav>
+
+        <div class="sidebar-footer">
+          <button id="btn-back-hub" class="btn btn-ghost btn-sm full-width" data-i18n="back_to_projects">
+            ← Todos los Proyectos
+          </button>
+        </div>
+      </aside>
+
+      <!-- Main Column -->
+      <main class="main-column">
+        <!-- Sticky Global Filter Bar (shown on active project tabs except Hub) -->
+        <div id="filter-bar" class="filter-bar hidden">
+          <div class="filter-controls">
+            <div class="filter-field">
+              <label data-i18n="from">Desde</label>
+              <input id="f-date-from" type="date" class="input input-sm" />
+            </div>
+            <div class="filter-field">
+              <label data-i18n="to">Hasta</label>
+              <input id="f-date-to" type="date" class="input input-sm" />
+            </div>
+            <div class="filter-field grow">
+              <label data-i18n="search">Buscar</label>
+              <input id="f-search" type="text" class="input input-sm" data-i18n-placeholder="search_ph" placeholder="Producto, cliente, pedido..." />
+            </div>
+            <div class="filter-field" id="wrap-f-category">
+              <label data-i18n="category">Categoría</label>
+              <select id="f-category" class="input input-sm"><option value="">All</option></select>
+            </div>
+            <div class="filter-field" id="wrap-f-region">
+              <label data-i18n="region">Sucursal/Región</label>
+              <select id="f-region" class="input input-sm"><option value="">All</option></select>
+            </div>
+            <div class="filter-field" id="wrap-f-channel">
+              <label data-i18n="channel">Canal</label>
+              <select id="f-channel" class="input input-sm"><option value="">All</option></select>
+            </div>
+            <div class="filter-field" id="wrap-f-folder">
+              <label data-i18n="folder">Carpeta/Origen</label>
+              <select id="f-folder" class="input input-sm"><option value="">All</option></select>
+            </div>
+            <label class="checkbox-pill" title="Include cancelled/returned orders">
+              <input id="f-include-excluded" type="checkbox" />
+              <span data-i18n="include_cancelled">Incluir cancelados</span>
+            </label>
+            <button id="btn-reset-filters" class="btn btn-ghost btn-sm" data-i18n="reset">Limpiar</button>
+          </div>
+          <div class="filter-views-row">
+            <div id="active-filter-chips" class="chips-row"></div>
+            <div class="saved-views-controls">
+              <select id="saved-views-select" class="input input-sm">
+                <option value="" data-i18n="saved_views">Vistas guardadas...</option>
+              </select>
+              <button id="btn-save-view" class="btn btn-secondary btn-sm" data-i18n="save_view">Guardar vista</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- View Container -->
+        <section id="view-container" class="view-container"></section>
+      </main>
+    </div>
+  </div>
+
+  <!-- Modal Root -->
+  <div id="modal-backdrop" class="modal-backdrop hidden">
+    <div id="modal-box" class="modal-box" role="dialog" aria-modal="true"></div>
+  </div>
+
+  <!-- Toast Container -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <script type="module" src="/static/js/main.js"></script>
+</body>
+</html>

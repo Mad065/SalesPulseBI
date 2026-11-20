@@ -1,0 +1,35 @@
+<svg width="1200" height="320" viewBox="0 0 1200 320" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="320" rx="20" fill="#090D16"/>
+  <rect x="1" y="1" width="1198" height="318" rx="19" stroke="#1E293B" stroke-width="2"/>
+  <circle cx="980" cy="60" r="210" fill="url(#glow1)" opacity="0.26"/>
+  <circle cx="220" cy="280" r="180" fill="url(#glow2)" opacity="0.2"/>
+  <!-- Grid lines -->
+  <path d="M720 250H1120M720 195H1120M720 140H1120M720 85H1120" stroke="#1E293B" stroke-width="1.5" stroke-dasharray="6 6"/>
+  <!-- Sparkline Graphic -->
+  <path d="M735 232L805 186L868 206L942 122L1016 146L1104 72" stroke="url(#line_grad)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M735 232L805 186L868 206L942 122L1016 146L1104 72V250H735V232Z" fill="url(#area_grad)" opacity="0.22"/>
+  <circle cx="942" cy="122" r="7" fill="#10B981" stroke="#090D16" stroke-width="3"/>
+  <circle cx="1104" cy="72" r="8" fill="#34D399" stroke="#090D16" stroke-width="3"/>
+  <!-- Logo Badge -->
+  <rect x="64" y="68" width="68" height="68" rx="18" fill="url(#badge_grad)"/>
+  <path d="M79 112L91 99L100 107L112 89L121 96" stroke="#FFFFFF" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="112" cy="89" r="4" fill="#34D399"/>
+  <!-- Text -->
+  <text x="152" y="106" fill="#F8FAFC" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif" font-size="44" font-weight="800" letter-spacing="-1">SalesPulse<tspan fill="#818CF8">BI</tspan></text>
+  <text x="152" y="138" fill="#94A3B8" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif" font-size="18" font-weight="500">Local-First Open-Source Sales Intelligence · FastAPI + DuckDB + ECharts</text>
+  <!-- Pills -->
+  <rect x="64" y="178" width="150" height="34" rx="17" fill="#111827" stroke="#334155"/>
+  <text x="139" y="200" text-anchor="middle" fill="#E2E8F0" font-family="-apple-system,sans-serif" font-size="13" font-weight="600">100% Local &amp; Private</text>
+  <rect x="228" y="178" width="166" height="34" rx="17" fill="#111827" stroke="#334155"/>
+  <text x="311" y="200" text-anchor="middle" fill="#E2E8F0" font-family="-apple-system,sans-serif" font-size="13" font-weight="600">Multi-Folder Auto-Sync</text>
+  <rect x="408" y="178" width="178" height="34" rx="17" fill="#111827" stroke="#334155"/>
+  <text x="497" y="200" text-anchor="middle" fill="#34D399" font-family="-apple-system,sans-serif" font-size="13" font-weight="600">RFM · Pareto · Forecast</text>
+  <text x="64" y="264" fill="#64748B" font-family="monospace" font-size="14">$ pip install salespulsebi &amp;&amp; salespulsebi demo</text>
+  <defs>
+    <radialGradient id="glow1"><stop stop-color="#6366F1"/><stop offset="1" stop-color="#090D16" stop-opacity="0"/></radialGradient>
+    <radialGradient id="glow2"><stop stop-color="#10B981"/><stop offset="1" stop-color="#090D16" stop-opacity="0"/></radialGradient>
+    <linearGradient id="badge_grad" x1="64" y1="68" x2="132" y2="136" gradientUnits="userSpaceOnUse"><stop stop-color="#4F46E5"/><stop offset="1" stop-color="#10B981"/></linearGradient>
+    <linearGradient id="line_grad" x1="735" y1="232" x2="1104" y2="72" gradientUnits="userSpaceOnUse"><stop stop-color="#6366F1"/><stop offset="1" stop-color="#10B981"/></linearGradient>
+    <linearGradient id="area_grad" x1="920" y1="72" x2="920" y2="250" gradientUnits="userSpaceOnUse"><stop stop-color="#6366F1"/><stop offset="1" stop-color="#090D16" stop-opacity="0"/></linearGradient>
+  </defs>
+</svg>
