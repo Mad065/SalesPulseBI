@@ -1,5 +1,6 @@
 import { api } from "../api.js";
-import { fmtNumber, t } from "../i18n.js";
+import { fmtNumber, fmtPercent, t } from "../i18n.js";
+import { openProjectSettingsModal } from "../settings_modal.js";
 import { state } from "../state.js";
 import { escapeHtml, showToast } from "./hub.js";
 
@@ -43,18 +44,25 @@ export async function renderDataStudio(container, onRecomputed) {
   container.innerHTML = `
     <div class="grid-2">
       <!-- Sources & Sync -->
-      <div class="card">
+      <div class="card" id="ds-sources-card">
         <div class="card-header">
           <h3 class="card-title">${t(lang, "sources_sync_title")}</h3>
-          <div style="display:flex;gap:6px;">
-            <label class="btn btn-secondary btn-sm" style="cursor:pointer;">
-              + Files
+          <div class="card-toolbar">
+            <label class="btn btn-secondary btn-sm">
+              ${lang === "es" ? "+ Archivos" : "+ Files"}
               <input id="ds-add-files" type="file" multiple accept=".csv,.tsv,.txt,.xlsx,.xls,.json,.jsonl,.ndjson,.parquet" class="hidden" />
             </label>
+            <label class="btn btn-secondary btn-sm">
+              ${lang === "es" ? "+ Carpeta" : "+ Folder"}
+              <input id="ds-add-folder" type="file" webkitdirectory directory multiple class="hidden" />
+            </label>
+            <button type="button" id="ds-open-sources-modal" class="btn btn-secondary btn-sm">
+              ${lang === "es" ? "Vincular Local / Moneda" : "Link Local / Currency"}
+            </button>
             <button id="ds-sync-btn" class="btn btn-primary btn-sm">↻ ${t(lang, "sync_now")}</button>
           </div>
         </div>
-        <div class="table-wrap" style="max-height:240px;">
+        <div class="table-wrap table-wrap-sm" tabindex="0" role="region" aria-label="${escapeHtml(t(lang, "sources_sync_title"))}">
           <table class="data-table">
             <thead><tr><th>Type</th><th>Path</th><th class="num">Rows</th><th>Status</th><th></th></tr></thead>
             <tbody>
@@ -63,10 +71,10 @@ export async function renderDataStudio(container, onRecomputed) {
                   (s) => `
                 <tr>
                   <td><span class="pill pill-muted">${escapeHtml(s.source_type)}</span></td>
-                  <td title="${escapeHtml(s.path)}" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(s.path.split("/").slice(-2).join("/"))}</td>
+                  <td class="cell-truncate" title="${escapeHtml(s.path)}">${escapeHtml(s.path.split("/").slice(-2).join("/"))}</td>
                   <td class="num">${fmtNumber(s.row_count, 0, lang)}</td>
                   <td><span class="pill ${s.status === "ready" ? "pill-emerald" : "pill-amber"}">${escapeHtml(s.status)}</span></td>
-                  <td><button class="btn btn-ghost btn-sm ds-del-src" data-id="${escapeHtml(s.id)}">✕</button></td>
+                  <td><button class="btn btn-ghost btn-sm ds-del-src" data-id="${escapeHtml(s.id)}" aria-label="Remove Source">✕</button></td>
                 </tr>`
                 )
                 .join("")}
@@ -83,12 +91,12 @@ export async function renderDataStudio(container, onRecomputed) {
             Score: ${quality?.health_score ?? "—"}/100
           </span>
         </div>
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px;">
-          <div class="kpi-card"><div class="kpi-label">Clean Rows</div><div class="kpi-value" style="font-size:17px;">${fmtNumber(quality?.total_rows, 0, lang)}</div></div>
-          <div class="kpi-card"><div class="kpi-label">Duplicates Removed</div><div class="kpi-value" style="font-size:17px;">${fmtNumber(quality?.ingestion_stats?.duplicates_removed || 0, 0, lang)}</div></div>
-          <div class="kpi-card"><div class="kpi-label">Date Gaps</div><div class="kpi-value" style="font-size:17px;">${fmtNumber(quality?.date_gap_count || 0, 0, lang)}</div></div>
+        <div class="mini-kpis-3">
+          <div class="kpi-card"><div class="kpi-label">Clean Rows</div><div class="kpi-value kpi-value-sm">${fmtNumber(quality?.total_rows, 0, lang)}</div></div>
+          <div class="kpi-card"><div class="kpi-label">Duplicates Removed</div><div class="kpi-value kpi-value-sm">${fmtNumber(quality?.ingestion_stats?.duplicates_removed || 0, 0, lang)}</div></div>
+          <div class="kpi-card"><div class="kpi-label">Date Gaps</div><div class="kpi-value kpi-value-sm">${fmtNumber(quality?.date_gap_count || 0, 0, lang)}</div></div>
         </div>
-        <div class="table-wrap" style="max-height:145px;">
+        <div class="table-wrap table-wrap-xs" tabindex="0" role="region" aria-label="${escapeHtml(t(lang, "health_title"))}">
           <table class="data-table">
             <thead><tr><th>Column</th><th>Type</th><th class="num">Null %</th><th class="num">Distinct</th></tr></thead>
             <tbody>
@@ -98,7 +106,7 @@ export async function renderDataStudio(container, onRecomputed) {
                 <tr>
                   <td><code>${escapeHtml(c.column)}</code></td>
                   <td>${escapeHtml(c.type)}</td>
-                  <td class="num">${c.null_pct}%</td>
+                  <td class="num">${fmtPercent(c.null_pct, 1, lang)}</td>
                   <td class="num">${fmtNumber(c.distinct_count, 0, lang)}</td>
                 </tr>`
                 )
@@ -110,16 +118,16 @@ export async function renderDataStudio(container, onRecomputed) {
     </div>
 
     <!-- Mapping Studio -->
-    <div class="card" style="margin-bottom:16px;">
+    <div class="card card-spaced">
       <div class="card-header">
         <h3 class="card-title">${t(lang, "mapping_title")}</h3>
         <button id="ds-save-map" class="btn btn-primary btn-sm">${t(lang, "save_recompute")}</button>
       </div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px;margin-bottom:12px;">
+      <div class="mapping-grid">
         ${ROLES.map(
           (role) => `
-          <div>
-            <label style="font-size:11.5px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:3px;">${role}</label>
+          <div class="filter-field">
+            <label>${escapeHtml(role)}</label>
             <select class="input full-width input-sm ds-role-select" data-role="${role}">
               <option value="">— auto / unmapped —</option>
               ${rawCols
@@ -132,9 +140,9 @@ export async function renderDataStudio(container, onRecomputed) {
           </div>`
         ).join("")}
       </div>
-      <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;padding-top:10px;border-top:1px solid var(--border);">
-        <label class="checkbox-pill"><input id="ds-dedup" type="checkbox" ${rules.deduplicate ? "checked" : ""} /> Deduplicate</label>
-        <label class="checkbox-pill"><input id="ds-neg" type="checkbox" ${rules.exclude_negative_revenue ? "checked" : ""} /> Exclude Negative Revenue</label>
+      <div class="mapping-rules-bar">
+        <label class="checkbox-pill"><input id="ds-dedup" type="checkbox" ${rules.deduplicate ? "checked" : ""} /> <span>Deduplicate</span></label>
+        <label class="checkbox-pill"><input id="ds-neg" type="checkbox" ${rules.exclude_negative_revenue ? "checked" : ""} /> <span>Exclude Negative Revenue</span></label>
       </div>
     </div>
 
@@ -144,8 +152,8 @@ export async function renderDataStudio(container, onRecomputed) {
         <h3 class="card-title">${t(lang, "explorer_title")}</h3>
         <div id="ds-page-info" class="card-subtitle"></div>
       </div>
-      <div id="ds-table-wrap" class="table-wrap"></div>
-      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px;">
+      <div id="ds-table-wrap" class="table-wrap" tabindex="0" role="region" aria-label="${escapeHtml(t(lang, "explorer_title"))}"></div>
+      <div class="pagination-bar">
         <button id="ds-prev" class="btn btn-secondary btn-sm">← Prev</button>
         <button id="ds-next" class="btn btn-secondary btn-sm">Next →</button>
       </div>
@@ -173,7 +181,7 @@ export async function renderDataStudio(container, onRecomputed) {
             ${cols
               .map(
                 (c) =>
-                  `<th class="ds-sort-col" data-col="${escapeHtml(c)}" style="cursor:pointer;">${escapeHtml(c)} ${sortBy === c ? (sortDir === "asc" ? "▲" : "▼") : ""}</th>`
+                  `<th class="ds-sort-col row-clickable" data-col="${escapeHtml(c)}">${escapeHtml(c)} ${sortBy === c ? (sortDir === "asc" ? "▲" : "▼") : ""}</th>`
               )
               .join("")}
           </tr>
@@ -183,7 +191,7 @@ export async function renderDataStudio(container, onRecomputed) {
             .map(
               (r) => `
             <tr>
-              ${cols.map((c) => `<td>${escapeHtml(r[c] ?? "")}</td>`).join("")}
+              ${cols.map((c) => `<td class="tabular">${escapeHtml(r[c] ?? "")}</td>`).join("")}
             </tr>`
             )
             .join("")}
@@ -204,21 +212,53 @@ export async function renderDataStudio(container, onRecomputed) {
   }
 
   container.querySelector("#ds-prev").onclick = () => {
-    if (page > 1) { page--; loadTable(); }
+    if (page > 1) {
+      page--;
+      loadTable();
+    }
   };
-  container.querySelector("#ds-next").onclick = () => { page++; loadTable(); };
+  container.querySelector("#ds-next").onclick = () => {
+    page++;
+    loadTable();
+  };
 
   container.querySelector("#ds-sync-btn").onclick = async () => {
     const res = await api.syncProject(proj.id);
-    showToast(`Synced ${res.total_rows.toLocaleString()} rows`, "success");
+    showToast(`Synced ${fmtNumber(res.total_rows, 0, lang)} rows`, "success");
     onRecomputed();
   };
 
-  container.querySelector("#ds-add-files").addEventListener("change", async (e) => {
-    if (!e.target.files?.length) return;
-    await api.uploadFiles(proj.id, e.target.files);
-    showToast("Files added", "success");
+  async function ingestDroppedOrPicked(files) {
+    if (!files?.length) return;
+    await api.uploadFiles(proj.id, files);
+    showToast(lang === "es" ? "Archivos integrados" : "Files added", "success");
     onRecomputed();
+  }
+
+  container.querySelector("#ds-add-files").addEventListener("change", (e) =>
+    ingestDroppedOrPicked(e.target.files)
+  );
+  container.querySelector("#ds-add-folder").addEventListener("change", (e) =>
+    ingestDroppedOrPicked(e.target.files)
+  );
+  container.querySelector("#ds-open-sources-modal").addEventListener("click", () =>
+    openProjectSettingsModal({
+      projectId: proj.id,
+      initialTab: "sources",
+      onUpdated: () => onRecomputed(),
+    })
+  );
+
+  const srcCard = container.querySelector("#ds-sources-card");
+  srcCard.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    srcCard.classList.add("dropzone-active-card");
+  });
+  srcCard.addEventListener("dragleave", () => srcCard.classList.remove("dropzone-active-card"));
+  srcCard.addEventListener("drop", (e) => {
+    e.preventDefault();
+    srcCard.classList.remove("dropzone-active-card");
+    if (e.dataTransfer?.files?.length) ingestDroppedOrPicked(e.dataTransfer.files);
   });
 
   container.querySelectorAll(".ds-del-src").forEach((btn) =>
