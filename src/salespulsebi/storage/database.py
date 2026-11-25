@@ -8,13 +8,17 @@ import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import datetime, timezone
+from decimal import Decimal, ROUND_HALF_EVEN, localcontext
 from pathlib import Path
 
 from salespulsebi.storage.models import (
     CleaningRules,
     ColumnProfile,
+    GlobalSettings,
+    GlobalSettingsUpdate,
     MappingState,
     ProjectCreate,
+    ProjectSettings,
     ProjectSummary,
     ProjectUpdate,
     SavedViewCreate,
@@ -22,6 +26,17 @@ from salespulsebi.storage.models import (
     SourceRecord,
     SyncHistoryRecord,
 )
+
+
+def _apply_fx_to_amount(amount: float | int | None, fx_rate: Decimal) -> float | None:
+    """Scale a persisted base monetary summary amount using exact Decimal arithmetic."""
+    if amount is None:
+        return None
+    with localcontext() as ctx:
+        ctx.prec = 28
+        dec_amt = Decimal(str(amount))
+        scaled = dec_amt if fx_rate == Decimal("1") else (dec_amt * fx_rate)
+        return float(scaled.quantize(Decimal("0.01"), rounding=ROUND_HALF_EVEN))
 
 
 def utcnow_iso() -> str:
@@ -96,14 +111,21 @@ CREATE TABLE IF NOT EXISTS sync_history (
     warnings_json TEXT NOT NULL DEFAULT '[]',
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS app_settings (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    settings_json TEXT NOT NULL DEFAULT '{}',
+    updated_at TEXT NOT NULL
+);
 """
 
 
 class MetadataDB:
     """Thread-safe SQLite metadata persistence manager."""
 
-    def __init__(self, db_path: Path) -> None:
+    def __init__(self, db_path: Path, default_currency: str = "USD") -> None:
         self.db_path = db_path
+        self.default_currency = default_currency.strip().upper() if default_currency else "USD"
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._init_db()
 
@@ -125,9 +147,88 @@ class MetadataDB:
     def _init_db(self) -> None:
         with self.connect() as conn:
             conn.executescript(SCHEMA_SQL)
+            row = conn.execute("SELECT id FROM app_settings WHERE id = 1").fetchone()
+            if not row:
+                now = utcnow_iso()
+                initial = GlobalSettings(default_currency=self.default_currency, updated_at=now)
+                conn.execute(
+                    "INSERT INTO app_settings (id, settings_json, updated_at) VALUES (1, ?, ?)",
+                    (initial.model_dump_json(exclude={"updated_at"}), now),
+                )
+
+    def get_global_settings(self) -> GlobalSettings:
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT settings_json, updated_at FROM app_settings WHERE id = 1"
+            ).fetchone()
+        if not row:
+            return GlobalSettings(default_currency=self.default_currency, updated_at=utcnow_iso())
+        try:
+            raw = json.loads(row["settings_json"] or "{}")
+            return GlobalSettings.model_validate({**raw, "updated_at": row["updated_at"]})
+        except Exception:
+            return GlobalSettings(default_currency=self.default_currency, updated_at=row["updated_at"])
+
+    def update_global_settings(self, payload: GlobalSettingsUpdate) -> GlobalSettings:
+        current = self.get_global_settings()
+        merged = current.model_dump(exclude={"updated_at"})
+        patch_data = payload.model_dump(exclude_unset=True, exclude={"apply_currency_to_existing"})
+        for k, v in patch_data.items():
+            if v is not None or k in ("default_base_currency", "default_date_dayfirst"):
+                merged[k] = v
+        now = utcnow_iso()
+        validated = GlobalSettings.model_validate({**merged, "updated_at": now})
+        with self.connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO app_settings (id, settings_json, updated_at)
+                VALUES (1, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    settings_json = excluded.settings_json,
+                    updated_at = excluded.updated_at
+                """,
+                (validated.model_dump_json(exclude={"updated_at"}), now),
+            )
+            if payload.apply_currency_to_existing:
+                rows = conn.execute("SELECT id, settings_json FROM projects").fetchall()
+                for r in rows:
+                    try:
+                        p_settings = ProjectSettings.model_validate(
+                            json.loads(r["settings_json"] or "{}")
+                        )
+                    except Exception:
+                        p_settings = ProjectSettings()
+                    p_settings.base_currency = validated.default_base_currency
+                    p_settings.exchange_rate = validated.default_exchange_rate
+                    conn.execute(
+                        "UPDATE projects SET currency = ?, settings_json = ?, updated_at = ? WHERE id = ?",
+                        (validated.default_currency, p_settings.model_dump_json(), now, r["id"]),
+                    )
+        return validated
+
+    def reset_global_settings(self) -> GlobalSettings:
+        now = utcnow_iso()
+        fresh = GlobalSettings(default_currency=self.default_currency, updated_at=now)
+        with self.connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO app_settings (id, settings_json, updated_at)
+                VALUES (1, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    settings_json = excluded.settings_json,
+                    updated_at = excluded.updated_at
+                """,
+                (fresh.model_dump_json(exclude={"updated_at"}), now),
+            )
+        return fresh
 
     @staticmethod
     def _row_to_project_summary(row: sqlite3.Row) -> ProjectSummary:
+        raw_settings_str = row["settings_json"] if "settings_json" in row.keys() else "{}"
+        try:
+            settings = ProjectSettings.model_validate(json.loads(raw_settings_str or "{}"))
+        except Exception:
+            settings = ProjectSettings()
         return ProjectSummary(
             id=row["id"],
             name=row["name"],
@@ -136,25 +237,42 @@ class MetadataDB:
             is_favorite=bool(row["is_favorite"]),
             currency=row["currency"],
             locale=row["locale"],
+            settings=settings,
             created_at=row["created_at"],
             updated_at=row["updated_at"],
             last_synced_at=row["last_synced_at"],
             row_count=row["row_count"],
             file_count=row["file_count"],
-            total_revenue=row["total_revenue"],
+            total_revenue=_apply_fx_to_amount(row["total_revenue"], settings.exchange_rate),
             health_score=row["health_score"],
         )
 
     def create_project(self, payload: ProjectCreate, project_id: str | None = None) -> ProjectSummary:
         pid = project_id or str(uuid.uuid4())
         now = utcnow_iso()
+        g_settings = self.get_global_settings()
+        resolved_currency = (payload.currency or g_settings.default_currency).upper()
+        resolved_locale = payload.locale or g_settings.locale
+        if payload.settings is not None:
+            resolved_settings = payload.settings
+        else:
+            resolved_settings = ProjectSettings(
+                base_currency=g_settings.default_base_currency,
+                exchange_rate=g_settings.default_exchange_rate,
+            )
+        default_cleaning = CleaningRules(
+            deduplicate=g_settings.default_deduplicate,
+            dedup_mode=g_settings.default_dedup_mode,
+            exclude_negative_revenue=g_settings.default_exclude_negative_revenue,
+            date_dayfirst=g_settings.default_date_dayfirst,
+        )
         with self.connect() as conn:
             conn.execute(
                 """
                 INSERT INTO projects (
                     id, name, description, tags_json, is_favorite,
-                    currency, locale, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    currency, locale, settings_json, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     pid,
@@ -162,8 +280,9 @@ class MetadataDB:
                     payload.description.strip(),
                     json.dumps(payload.tags),
                     int(payload.is_favorite),
-                    payload.currency.upper(),
-                    payload.locale,
+                    resolved_currency,
+                    resolved_locale,
+                    resolved_settings.model_dump_json(),
                     now,
                     now,
                 ),
@@ -178,7 +297,7 @@ class MetadataDB:
                     pid,
                     "{}",
                     "[]",
-                    CleaningRules().model_dump_json(),
+                    default_cleaning.model_dump_json(),
                     now,
                 ),
             )
@@ -220,6 +339,8 @@ class MetadataDB:
             updates["locale"] = payload.locale
         if payload.is_favorite is not None:
             updates["is_favorite"] = int(payload.is_favorite)
+        if payload.settings is not None:
+            updates["settings_json"] = payload.settings.model_dump_json()
 
         cols = ", ".join(f"{k} = ?" for k in updates)
         params = list(updates.values()) + [project_id]
@@ -270,6 +391,11 @@ class MetadataDB:
         src = self.get_project(source_id)
         if not src:
             return None
+        with self.connect() as conn:
+            raw_row = conn.execute(
+                "SELECT total_revenue FROM projects WHERE id = ?", (source_id,)
+            ).fetchone()
+        raw_total_revenue = raw_row["total_revenue"] if raw_row else None
         new_proj = self.create_project(
             ProjectCreate(
                 name=new_name or f"{src.name} (Copy)",
@@ -278,6 +404,7 @@ class MetadataDB:
                 currency=src.currency,
                 locale=src.locale,
                 is_favorite=False,
+                settings=src.settings.model_copy(deep=True),
             )
         )
         mapping = self.get_mapping(source_id)
@@ -309,7 +436,7 @@ class MetadataDB:
             new_proj.id,
             row_count=src.row_count,
             file_count=src.file_count,
-            total_revenue=src.total_revenue,
+            total_revenue=raw_total_revenue,
             health_score=src.health_score,
             synced=False,
         )

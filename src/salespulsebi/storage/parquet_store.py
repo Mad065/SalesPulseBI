@@ -3,14 +3,41 @@
 from __future__ import annotations
 
 import math
+import re
 from datetime import date, datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation, ROUND_HALF_EVEN, localcontext
 from pathlib import Path
 from typing import Any
 
 import duckdb
 import numpy as np
 import pandas as pd
+
+MONETARY_COLUMNS: tuple[str, ...] = (
+    "_revenue",
+    "_unit_price",
+    "_cost",
+    "_discount",
+    "_tax",
+    "_profit",
+)
+
+
+def normalize_fx_rate(fx_rate: Decimal | str | int | float | None) -> Decimal:
+    """Validate and normalize an exchange rate into a positive finite Decimal."""
+    if fx_rate is None:
+        return Decimal("1")
+    if isinstance(fx_rate, bool):
+        raise ValueError("Exchange rate cannot be boolean")
+    try:
+        dec = fx_rate if isinstance(fx_rate, Decimal) else Decimal(str(fx_rate))
+    except InvalidOperation as exc:
+        raise ValueError(f"Invalid exchange rate: {fx_rate}") from exc
+    if not dec.is_finite() or dec <= Decimal("0"):
+        raise ValueError("Exchange rate must be a finite number greater than 0")
+    with localcontext() as ctx:
+        ctx.prec = 28
+        return dec.quantize(Decimal("0.000001"), rounding=ROUND_HALF_EVEN).normalize()
 
 
 def sanitize_json(obj: Any) -> Any:
@@ -27,8 +54,12 @@ def sanitize_json(obj: Any) -> Any:
         val = float(obj)
         return None if (math.isnan(val) or math.isinf(val)) else val
     if isinstance(obj, Decimal):
-        val = float(obj)
-        return None if (math.isnan(val) or math.isinf(val)) else val
+        if not obj.is_finite():
+            return None
+        with localcontext() as ctx:
+            ctx.prec = 28
+            rounded = obj.quantize(Decimal("0.0001"), rounding=ROUND_HALF_EVEN)
+        return float(rounded)
     if isinstance(obj, (pd.Timestamp, datetime)):
         if pd.isna(obj):
             return None
@@ -94,10 +125,35 @@ class ParquetStore:
         return len(prepared)
 
     @staticmethod
-    def connect_parquet(parquet_path: Path) -> duckdb.DuckDBPyConnection:
+    def connect_parquet(
+        parquet_path: Path,
+        fx_rate: Decimal = Decimal("1"),
+    ) -> duckdb.DuckDBPyConnection:
         con = duckdb.connect(":memory:")
         escaped = str(parquet_path).replace("'", "''")
-        con.execute(f"CREATE VIEW sales AS SELECT * FROM read_parquet('{escaped}')")
+        rate = normalize_fx_rate(fx_rate)
+        if rate == Decimal("1"):
+            con.execute(f"CREATE VIEW sales AS SELECT * FROM read_parquet('{escaped}')")
+            return con
+
+        fx_lit = format(rate, "f")
+        if not re.fullmatch(r"\d+(\.\d+)?", fx_lit):
+            raise ValueError("Invalid exchange rate literal")
+
+        raw_desc = con.execute(f"DESCRIBE SELECT * FROM read_parquet('{escaped}')").fetchall()
+        present_cols = {str(r[0]) for r in raw_desc}
+        replacements = [
+            f'ROUND(CAST("{col}" AS DECIMAL(28, 8)) * DECIMAL \'{fx_lit}\', 4) AS "{col}"'
+            for col in MONETARY_COLUMNS
+            if col in present_cols
+        ]
+        if replacements:
+            rep_sql = ", ".join(replacements)
+            con.execute(
+                f"CREATE VIEW sales AS SELECT * REPLACE ({rep_sql}) FROM read_parquet('{escaped}')"
+            )
+        else:
+            con.execute(f"CREATE VIEW sales AS SELECT * FROM read_parquet('{escaped}')")
         return con
 
     @staticmethod
