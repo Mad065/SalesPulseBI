@@ -151,11 +151,11 @@ def test_fx_precision_and_custom_panels_edge_cases(
 ) -> None:
     """Verify exact Decimal FX scaling, empty filter windows, negative values, and missing columns."""
     csv_bytes = (
-        "order_id,date,product,category,quantity,cost,total,customer,region,status\n"
-        "O1,2026-03-01,Item A,Cat 1,1,5.00,10.00,Cust 1,North,Completed\n"
-        "O2,2026-03-02,Item B,Cat 1,2,10.00,-2.50,Cust 2,South,Completed\n"
-        "O3,2026-03-03,Item A,Cat 2,1,4.00,12.50,Cust 1,North,Completed\n"
-    ).encode("utf-8")
+        b"order_id,date,product,category,quantity,cost,total,customer,region,status\n"
+        b"O1,2026-03-01,Item A,Cat 1,1,5.00,10.00,Cust 1,North,Completed\n"
+        b"O2,2026-03-02,Item B,Cat 1,2,10.00,-2.50,Cust 2,South,Completed\n"
+        b"O3,2026-03-03,Item A,Cat 2,1,4.00,12.50,Cust 1,North,Completed\n"
+    )
     proj = db.create_project(ProjectCreate(name="Edge FX", currency="EUR"))
     pipeline.ingest_uploaded_files(proj.id, [("edge.csv", csv_bytes)])
     ppath = pipeline.settings.project_parquet_path(proj.id)

@@ -215,7 +215,7 @@ async def import_project_bundle(
         if has_raw:
             pipeline.sync_project(new_proj.id)
         else:
-            from decimal import Decimal, ROUND_HALF_EVEN, localcontext
+            from decimal import ROUND_HALF_EVEN, Decimal, localcontext
 
             raw_rev = p_data.get("total_revenue")
             if raw_rev is not None and imported_settings.exchange_rate != Decimal("1"):

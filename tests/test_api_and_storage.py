@@ -83,10 +83,10 @@ def test_settings_currency_fx_upload_and_custom_panels_api(
     pid = r_create.json()["id"]
 
     csv_part1 = (
-        "order_id,date,product,category,quantity,cost,total,customer,channel,status\n"
-        "A1,2026-01-10,Desk,Furniture,1,60.00,100.00,C1,Web,Completed\n"
-        "A2,2026-01-12,Chair,Furniture,2,80.00,200.00,C2,Store,Completed\n"
-    ).encode("utf-8")
+        b"order_id,date,product,category,quantity,cost,total,customer,channel,status\n"
+        b"A1,2026-01-10,Desk,Furniture,1,60.00,100.00,C1,Web,Completed\n"
+        b"A2,2026-01-12,Chair,Furniture,2,80.00,200.00,C2,Store,Completed\n"
+    )
     r_up1 = client.post(
         f"/api/v1/projects/{pid}/upload",
         files=[("files", ("jan_part1.csv", csv_part1, "text/csv"))],
@@ -97,9 +97,9 @@ def test_settings_currency_fx_upload_and_custom_panels_api(
 
     # 2. Add MORE files after project creation
     csv_part2 = (
-        "order_id,date,product,category,quantity,cost,total,customer,channel,status\n"
-        "A3,2026-02-05,Lamp,Lighting,1,20.00,50.00,C1,Web,Completed\n"
-    ).encode("utf-8")
+        b"order_id,date,product,category,quantity,cost,total,customer,channel,status\n"
+        b"A3,2026-02-05,Lamp,Lighting,1,20.00,50.00,C1,Web,Completed\n"
+    )
     r_up2 = client.post(
         f"/api/v1/projects/{pid}/upload",
         files=[("files", ("feb_part2.csv", csv_part2, "text/csv"))],

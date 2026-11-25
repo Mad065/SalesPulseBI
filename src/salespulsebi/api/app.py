@@ -10,7 +10,8 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from salespulsebi import __app_name__, __version__
-from salespulsebi.api.routes import analytics, demo, exports, mapping, projects, settings as settings_routes, sources
+from salespulsebi.api.routes import analytics, demo, exports, mapping, projects, sources
+from salespulsebi.api.routes import settings as settings_routes
 from salespulsebi.config import Settings, get_settings
 from salespulsebi.ingestion.pipeline import ProjectIngestionPipeline
 from salespulsebi.storage.database import MetadataDB
