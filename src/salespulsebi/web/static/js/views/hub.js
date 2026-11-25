@@ -259,6 +259,7 @@ export function openNewProjectModal(onCreated) {
     <div id="m-panel-link" class="hidden">
       <div style="display:flex;gap:8px;margin-bottom:8px;">
         <input id="m-folder-path" class="input" style="flex:1;" placeholder="/path/to/sales_folder" />
+        <button id="m-native-pick" class="btn btn-secondary btn-sm hidden">${lang === "es" ? "Elegir..." : "Browse..."}</button>
         <button id="m-browse-up" class="btn btn-secondary btn-sm">↑ Up</button>
       </div>
       <div id="m-fs-status" style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;"></div>
@@ -290,6 +291,18 @@ export function openNewProjectModal(onCreated) {
     box.querySelector("#m-browse-up").onclick = () => {
       if (data.parent_path) loadFs(data.parent_path);
     };
+  }
+
+  const nativePickBtn = box.querySelector("#m-native-pick");
+  if (window.pywebview?.api?.pick_folder) {
+    nativePickBtn.classList.remove("hidden");
+    nativePickBtn.addEventListener("click", async () => {
+      const picked = await window.pywebview.api.pick_folder();
+      if (picked) {
+        box.querySelector("#m-folder-path").value = picked;
+        loadFs(picked);
+      }
+    });
   }
 
   box.querySelectorAll(".tab-btn").forEach((btn) =>

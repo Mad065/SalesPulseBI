@@ -77,13 +77,13 @@ source .venv/bin/activate
 pip install -e ".[xls]"
 ```
 
-### 2. Inicia con los Proyectos Demo Incluidos
+### 2. Inicia la App de Escritorio con los Proyectos Demo Incluidos
 
 ```bash
 salespulsebi demo
 ```
 
-Esto crea dos proyectos de demostración (`OmniRetail LatAm — Multi-Branch` con carpeta multi-sucursal heterogénea CSV + Excel multi-hoja + CSV europeo con `;`, y `Café Aurora — Minimal CSV`) y abre `http://127.0.0.1:8420`.
+Esto crea dos proyectos de demostración (`OmniRetail LatAm — Multi-Branch` con carpeta multi-sucursal heterogénea CSV + Excel multi-hoja + CSV europeo con `;`, y `Café Aurora — Minimal CSV`) y abre **SalesPulseBI** en su ventana nativa de escritorio (pasa `--browser` si prefieres abrirlo en tu navegador web).
 
 ### 3. Abre tus Propios Archivos o Carpetas de Ventas Directo desde Terminal
 

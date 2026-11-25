@@ -77,13 +77,13 @@ source .venv/bin/activate
 pip install -e ".[xls]"
 ```
 
-### 2. Launch with Built-In Demo Projects
+### 2. Launch the Desktop App with Built-In Demo Projects
 
 ```bash
 salespulsebi demo
 ```
 
-This seeds two showcase projects (`OmniRetail LatAm — Multi-Branch` across heterogeneous CSV + multi-sheet XLSX + European `;` CSV folders, and `Café Aurora — Minimal CSV`) and opens `http://127.0.0.1:8420`.
+This seeds two showcase projects (`OmniRetail LatAm — Multi-Branch` across heterogeneous CSV + multi-sheet XLSX + European `;` CSV folders, and `Café Aurora — Minimal CSV`) and opens **SalesPulseBI** in its native desktop window (pass `--browser` if you prefer opening it in your web browser).
 
 ### 3. Open Your Own Sales File or Folder Immediately
 

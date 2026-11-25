@@ -15,4 +15,4 @@ RUN pip install --no-cache-dir -e ".[xls]" && mkdir -p /data
 VOLUME ["/data"]
 EXPOSE 8420
 
-CMD ["salespulsebi", "serve", "--no-browser"]
+CMD ["salespulsebi", "serve", "--headless"]

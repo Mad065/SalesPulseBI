@@ -96,6 +96,16 @@ export const api = {
     const disp = res.headers.get("content-disposition") || "";
     const match = disp.match(/filename="?([^"]+)"?/);
     const filename = match ? match[1] : `salespulsebi_${format}`;
+
+    if (window.pywebview?.api?.save_file) {
+      const buf = await blob.arrayBuffer();
+      const bytes = new Uint8Array(buf);
+      let bin = "";
+      for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+      await window.pywebview.api.save_file(filename, btoa(bin));
+      return;
+    }
+
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
