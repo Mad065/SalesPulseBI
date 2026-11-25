@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, timedelta
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
 import duckdb
 
 from salespulsebi.storage.models import FilterState
-from salespulsebi.storage.parquet_store import ParquetStore, sanitize_json
+from salespulsebi.storage.parquet_store import ParquetStore, normalize_fx_rate, sanitize_json
 
 
 @dataclass
@@ -19,6 +20,7 @@ class AnalyticsContext:
     columns: set[str]
     column_types: dict[str, str]
     capabilities: dict[str, bool]
+    fx_rate: Decimal = Decimal("1")
 
     def close(self) -> None:
         self.con.close()
@@ -77,10 +79,15 @@ def detect_capabilities(cols: set[str]) -> dict[str, bool]:
     }
 
 
-def open_context(parquet_path: Path) -> AnalyticsContext:
+def open_context(
+    parquet_path: Path,
+    *,
+    fx_rate: Decimal = Decimal("1"),
+) -> AnalyticsContext:
     if not parquet_path.exists():
         raise FileNotFoundError(f"Dataset parquet not found: {parquet_path}")
-    con = ParquetStore.connect_parquet(parquet_path)
+    rate = normalize_fx_rate(fx_rate)
+    con = ParquetStore.connect_parquet(parquet_path, fx_rate=rate)
     desc = con.execute("DESCRIBE sales").fetchall()
     col_types = {str(r[0]): str(r[1]) for r in desc}
     cols = set(col_types.keys())
@@ -89,6 +96,7 @@ def open_context(parquet_path: Path) -> AnalyticsContext:
         columns=cols,
         column_types=col_types,
         capabilities=detect_capabilities(cols),
+        fx_rate=rate,
     )
 
 
