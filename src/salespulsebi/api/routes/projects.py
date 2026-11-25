@@ -17,6 +17,7 @@ from salespulsebi.storage.database import MetadataDB
 from salespulsebi.storage.models import (
     ProjectCreate,
     ProjectDetail,
+    ProjectSettings,
     ProjectSummary,
     ProjectUpdate,
     SavedViewCreate,
@@ -118,9 +119,9 @@ def export_project_bundle(
     mapping = db.get_mapping(project_id)
     views = db.list_saved_views(project_id)
     bundle_meta = {
-        "project": proj.model_dump(),
-        "mapping": mapping.model_dump(),
-        "saved_views": [v.model_dump() for v in views],
+        "project": proj.model_dump(mode="json"),
+        "mapping": mapping.model_dump(mode="json"),
+        "saved_views": [v.model_dump(mode="json") for v in views],
     }
 
     buf = io.BytesIO()
@@ -163,6 +164,7 @@ async def import_project_bundle(
             raise HTTPException(status_code=400, detail="Missing manifest.json in bundle")
         manifest = json.loads(zf.read("manifest.json").decode("utf-8"))
         p_data = manifest["project"]
+        imported_settings = ProjectSettings.model_validate(p_data.get("settings") or {})
         new_proj = db.create_project(
             ProjectCreate(
                 name=f"{p_data['name']} (Imported)",
@@ -170,6 +172,7 @@ async def import_project_bundle(
                 tags=p_data.get("tags", []),
                 currency=p_data.get("currency", "USD"),
                 locale=p_data.get("locale", "es"),
+                settings=imported_settings,
             )
         )
         m_data = manifest.get("mapping", {})
@@ -212,11 +215,22 @@ async def import_project_bundle(
         if has_raw:
             pipeline.sync_project(new_proj.id)
         else:
+            from decimal import Decimal, ROUND_HALF_EVEN, localcontext
+
+            raw_rev = p_data.get("total_revenue")
+            if raw_rev is not None and imported_settings.exchange_rate != Decimal("1"):
+                with localcontext() as ctx:
+                    ctx.prec = 28
+                    raw_rev = float(
+                        (Decimal(str(raw_rev)) / imported_settings.exchange_rate).quantize(
+                            Decimal("0.01"), rounding=ROUND_HALF_EVEN
+                        )
+                    )
             db.update_project_stats(
                 new_proj.id,
                 row_count=p_data.get("row_count", 0),
                 file_count=p_data.get("file_count", 0),
-                total_revenue=p_data.get("total_revenue"),
+                total_revenue=raw_rev,
                 health_score=p_data.get("health_score"),
                 synced=True,
             )

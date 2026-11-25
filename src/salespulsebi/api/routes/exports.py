@@ -40,7 +40,7 @@ def export_csv(
     ppath = settings.project_parquet_path(project_id)
     if not proj or not ppath.exists():
         raise HTTPException(status_code=404, detail="Project dataset not found")
-    with open_context(ppath) as ctx:
+    with open_context(ppath, fx_rate=proj.settings.exchange_rate) as ctx:
         data = export_csv_bytes(ctx, filters)
     slug = _safe_slug(proj.name)
     return Response(
@@ -61,7 +61,7 @@ def export_xlsx(
     ppath = settings.project_parquet_path(project_id)
     if not proj or not ppath.exists():
         raise HTTPException(status_code=404, detail="Project dataset not found")
-    with open_context(ppath) as ctx:
+    with open_context(ppath, fx_rate=proj.settings.exchange_rate) as ctx:
         ov = compute_overview(ctx, filters)
         data = export_xlsx_bytes(ctx, filters, proj, ov)
     slug = _safe_slug(proj.name)
@@ -83,7 +83,7 @@ def export_parquet(
     ppath = settings.project_parquet_path(project_id)
     if not proj or not ppath.exists():
         raise HTTPException(status_code=404, detail="Project dataset not found")
-    with open_context(ppath) as ctx:
+    with open_context(ppath, fx_rate=proj.settings.exchange_rate) as ctx:
         data = export_parquet_bytes(ctx, filters, settings.project_dir(project_id))
     slug = _safe_slug(proj.name)
     return Response(
@@ -104,7 +104,7 @@ def export_html(
     ppath = settings.project_parquet_path(project_id)
     if not proj or not ppath.exists():
         raise HTTPException(status_code=404, detail="Project dataset not found")
-    with open_context(ppath) as ctx:
+    with open_context(ppath, fx_rate=proj.settings.exchange_rate) as ctx:
         ov = compute_overview(ctx, filters)
         ts = compute_timeseries(ctx, filters)
         pr = compute_products(ctx, filters)

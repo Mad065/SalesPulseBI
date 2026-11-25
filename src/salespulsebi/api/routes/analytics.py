@@ -7,7 +7,11 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 
 from salespulsebi.analytics.customers import compute_customers
-from salespulsebi.analytics.dimensions import compute_adhoc, compute_dimensions
+from salespulsebi.analytics.dimensions import (
+    compute_adhoc,
+    compute_custom_panels,
+    compute_dimensions,
+)
 from salespulsebi.analytics.insights import generate_insights
 from salespulsebi.analytics.overview import compute_overview
 from salespulsebi.analytics.products import compute_products
@@ -17,7 +21,13 @@ from salespulsebi.analytics.timeseries import compute_timeseries
 from salespulsebi.api.deps import get_app_settings, get_db
 from salespulsebi.config import Settings
 from salespulsebi.storage.database import MetadataDB
-from salespulsebi.storage.models import AdHocRequest, FilterState, ProjectSummary, TableRequest
+from salespulsebi.storage.models import (
+    AdHocRequest,
+    CustomPanelsBatchRequest,
+    FilterState,
+    ProjectSummary,
+    TableRequest,
+)
 from salespulsebi.storage.parquet_store import ParquetStore, sanitize_json
 
 router = APIRouter(prefix="/projects/{project_id}/analytics", tags=["analytics"])
@@ -42,8 +52,8 @@ def analytics_overview(
     db: MetadataDB = Depends(get_db),
     settings: Settings = Depends(get_app_settings),
 ) -> dict[str, Any]:
-    _, ppath = _require_project_and_parquet(project_id, db, settings)
-    with open_context(ppath) as ctx:
+    proj, ppath = _require_project_and_parquet(project_id, db, settings)
+    with open_context(ppath, fx_rate=proj.settings.exchange_rate) as ctx:
         return compute_overview(ctx, filters)
 
 
@@ -54,8 +64,8 @@ def analytics_timeseries(
     db: MetadataDB = Depends(get_db),
     settings: Settings = Depends(get_app_settings),
 ) -> dict[str, Any]:
-    _, ppath = _require_project_and_parquet(project_id, db, settings)
-    with open_context(ppath) as ctx:
+    proj, ppath = _require_project_and_parquet(project_id, db, settings)
+    with open_context(ppath, fx_rate=proj.settings.exchange_rate) as ctx:
         return compute_timeseries(ctx, filters)
 
 
@@ -66,8 +76,8 @@ def analytics_products(
     db: MetadataDB = Depends(get_db),
     settings: Settings = Depends(get_app_settings),
 ) -> dict[str, Any]:
-    _, ppath = _require_project_and_parquet(project_id, db, settings)
-    with open_context(ppath) as ctx:
+    proj, ppath = _require_project_and_parquet(project_id, db, settings)
+    with open_context(ppath, fx_rate=proj.settings.exchange_rate) as ctx:
         return compute_products(ctx, filters)
 
 
@@ -78,8 +88,8 @@ def analytics_customers(
     db: MetadataDB = Depends(get_db),
     settings: Settings = Depends(get_app_settings),
 ) -> dict[str, Any]:
-    _, ppath = _require_project_and_parquet(project_id, db, settings)
-    with open_context(ppath) as ctx:
+    proj, ppath = _require_project_and_parquet(project_id, db, settings)
+    with open_context(ppath, fx_rate=proj.settings.exchange_rate) as ctx:
         return compute_customers(ctx, filters)
 
 
@@ -90,8 +100,8 @@ def analytics_dimensions(
     db: MetadataDB = Depends(get_db),
     settings: Settings = Depends(get_app_settings),
 ) -> dict[str, Any]:
-    _, ppath = _require_project_and_parquet(project_id, db, settings)
-    with open_context(ppath) as ctx:
+    proj, ppath = _require_project_and_parquet(project_id, db, settings)
+    with open_context(ppath, fx_rate=proj.settings.exchange_rate) as ctx:
         return compute_dimensions(ctx, filters)
 
 
@@ -101,8 +111,8 @@ def analytics_quality(
     db: MetadataDB = Depends(get_db),
     settings: Settings = Depends(get_app_settings),
 ) -> dict[str, Any]:
-    _, ppath = _require_project_and_parquet(project_id, db, settings)
-    with open_context(ppath) as ctx:
+    proj, ppath = _require_project_and_parquet(project_id, db, settings)
+    with open_context(ppath, fx_rate=proj.settings.exchange_rate) as ctx:
         return compute_quality(ctx, settings.project_quality_path(project_id))
 
 
@@ -114,7 +124,7 @@ def analytics_insights(
     settings: Settings = Depends(get_app_settings),
 ) -> dict[str, Any]:
     proj, ppath = _require_project_and_parquet(project_id, db, settings)
-    with open_context(ppath) as ctx:
+    with open_context(ppath, fx_rate=proj.settings.exchange_rate) as ctx:
         ov = compute_overview(ctx, filters)
         ts = compute_timeseries(ctx, filters)
         pr = compute_products(ctx, filters)
@@ -139,10 +149,27 @@ def analytics_adhoc(
     db: MetadataDB = Depends(get_db),
     settings: Settings = Depends(get_app_settings),
 ) -> dict[str, Any]:
-    _, ppath = _require_project_and_parquet(project_id, db, settings)
-    with open_context(ppath) as ctx:
+    proj, ppath = _require_project_and_parquet(project_id, db, settings)
+    with open_context(ppath, fx_rate=proj.settings.exchange_rate) as ctx:
         try:
             return compute_adhoc(ctx, req)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/custom-panels")
+def analytics_custom_panels(
+    project_id: str,
+    req: CustomPanelsBatchRequest = CustomPanelsBatchRequest(),
+    db: MetadataDB = Depends(get_db),
+    settings: Settings = Depends(get_app_settings),
+) -> dict[str, Any]:
+    proj, ppath = _require_project_and_parquet(project_id, db, settings)
+    is_preview = req.preview_panel is not None
+    panels = [req.preview_panel] if req.preview_panel is not None else list(proj.settings.custom_panels)
+    with open_context(ppath, fx_rate=proj.settings.exchange_rate) as ctx:
+        try:
+            return compute_custom_panels(ctx, panels, req.filters, strict_columns=is_preview)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -154,8 +181,8 @@ def analytics_table(
     db: MetadataDB = Depends(get_db),
     settings: Settings = Depends(get_app_settings),
 ) -> dict[str, Any]:
-    _, ppath = _require_project_and_parquet(project_id, db, settings)
-    with open_context(ppath) as ctx:
+    proj, ppath = _require_project_and_parquet(project_id, db, settings)
+    with open_context(ppath, fx_rate=proj.settings.exchange_rate) as ctx:
         where_sql, params = build_where_clause(req.filters, ctx.columns)
         count_row = ParquetStore.query_one(
             ctx.con, f"SELECT COUNT(*) AS total FROM sales {where_sql}", params

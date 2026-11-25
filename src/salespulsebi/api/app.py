@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from salespulsebi import __app_name__, __version__
-from salespulsebi.api.routes import analytics, demo, exports, mapping, projects, sources
+from salespulsebi.api.routes import analytics, demo, exports, mapping, projects, settings as settings_routes, sources
 from salespulsebi.config import Settings, get_settings
 from salespulsebi.ingestion.pipeline import ProjectIngestionPipeline
 from salespulsebi.storage.database import MetadataDB
@@ -29,7 +29,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         description="Local-first open-source Sales Intelligence API & Web App",
     )
 
-    db = MetadataDB(cfg.db_path)
+    db = MetadataDB(cfg.db_path, default_currency=cfg.default_currency)
     pipeline = ProjectIngestionPipeline(db=db, settings=cfg)
     app.state.settings = cfg
     app.state.db = db
@@ -48,6 +48,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
 
     api_prefix = "/api/v1"
+    app.include_router(settings_routes.router, prefix=api_prefix)
     app.include_router(projects.router, prefix=api_prefix)
     app.include_router(sources.router, prefix=api_prefix)
     app.include_router(mapping.router, prefix=api_prefix)
