@@ -45,3 +45,11 @@ Thumbs.db
 *.swp
 *.swo
 ~$*.xlsx
+* [0-9].*
+* [0-9]
+
+# AI Agents & local skills
+.agents/
+skills-lock.json
+.env
+.env.*
