@@ -3,12 +3,17 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
+from decimal import Decimal
 from pathlib import Path
 
 import pandas as pd
 
 from salespulsebi.analytics.customers import compute_customers
-from salespulsebi.analytics.dimensions import compute_adhoc, compute_dimensions
+from salespulsebi.analytics.dimensions import (
+    compute_adhoc,
+    compute_custom_panels,
+    compute_dimensions,
+)
 from salespulsebi.analytics.insights import generate_insights
 from salespulsebi.analytics.overview import compute_overview
 from salespulsebi.analytics.products import compute_products
@@ -18,7 +23,7 @@ from salespulsebi.analytics.reports import export_csv_bytes, export_html_report,
 from salespulsebi.analytics.timeseries import compute_timeseries
 from salespulsebi.ingestion.pipeline import ProjectIngestionPipeline
 from salespulsebi.storage.database import MetadataDB
-from salespulsebi.storage.models import AdHocRequest, FilterState, ProjectCreate
+from salespulsebi.storage.models import AdHocRequest, CustomPanelSpec, FilterState, ProjectCreate
 
 
 def _seed_synthetic_analytics_project(
@@ -139,3 +144,76 @@ def test_full_analytics_suite(
         assert len(csv_b) > 100
         assert xlsx_b[:2] == b"PK"
         assert "SalesPulseBI" in html_rep
+
+
+def test_fx_precision_and_custom_panels_edge_cases(
+    tmp_path: Path, db: MetadataDB, pipeline: ProjectIngestionPipeline
+) -> None:
+    """Verify exact Decimal FX scaling, empty filter windows, negative values, and missing columns."""
+    csv_bytes = (
+        "order_id,date,product,category,quantity,cost,total,customer,region,status\n"
+        "O1,2026-03-01,Item A,Cat 1,1,5.00,10.00,Cust 1,North,Completed\n"
+        "O2,2026-03-02,Item B,Cat 1,2,10.00,-2.50,Cust 2,South,Completed\n"
+        "O3,2026-03-03,Item A,Cat 2,1,4.00,12.50,Cust 1,North,Completed\n"
+    ).encode("utf-8")
+    proj = db.create_project(ProjectCreate(name="Edge FX", currency="EUR"))
+    pipeline.ingest_uploaded_files(proj.id, [("edge.csv", csv_bytes)])
+    ppath = pipeline.settings.project_parquet_path(proj.id)
+
+    specs = [
+        CustomPanelSpec(
+            id="p_line",
+            title="Daily Line",
+            panel_type="line",
+            x_column="_date_day",
+            y_column="_revenue",
+            aggregation="sum",
+        ),
+        CustomPanelSpec(
+            id="p_kpi",
+            title="Net KPI",
+            panel_type="kpi",
+            y_column="_revenue",
+            aggregation="sum",
+        ),
+        CustomPanelSpec(
+            id="p_avg_kpi",
+            title="Avg KPI",
+            panel_type="kpi",
+            y_column="_revenue",
+            aggregation="avg",
+        ),
+        CustomPanelSpec(
+            id="p_missing",
+            title="Deleted Col Panel",
+            panel_type="bar",
+            x_column="_unmapped_deleted_col",
+            aggregation="count",
+        ),
+    ]
+
+    # Net base revenue = 10.00 - 2.50 + 12.50 = 20.00; with fx_rate = 1.125 -> 22.50 exact
+    with open_context(ppath, fx_rate=Decimal("1.125")) as ctx:
+        res = compute_custom_panels(ctx, specs, FilterState())
+        panels = res["panels"]
+        assert panels["p_kpi"]["value"] == 22.5
+        # Chronological order on temporal line chart
+        assert [r["label"] for r in panels["p_line"]["rows"]] == [
+            "2026-03-01",
+            "2026-03-02",
+            "2026-03-03",
+        ]
+        assert panels["p_line"]["rows"][1]["value"] == -2.8125  # -2.50 * 1.125 exact
+        # Missing column degrades gracefully without crashing sibling panels
+        assert panels["p_missing"]["available"] is False
+        assert panels["p_missing"]["reason"] == "missing_column"
+
+        # Empty filter window edge case (zero rows) -> no ZeroDivisionError
+        empty_res = compute_custom_panels(
+            ctx,
+            specs,
+            FilterState(date_from="2030-01-01", date_to="2030-01-31"),
+        )
+        assert empty_res["panels"]["p_kpi"]["value"] == 0.0
+        assert empty_res["panels"]["p_avg_kpi"]["value"] is None
+        assert empty_res["panels"]["p_line"]["rows"] == []
