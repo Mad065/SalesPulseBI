@@ -6,6 +6,12 @@ const DICT = {
     export_xlsx: "Excel (.xlsx)",
     export_csv: "CSV Limpio (.csv)",
     export_parquet: "Parquet (.parquet)",
+    style_precision: "Precision FinTech",
+    style_terminal: "Quantum Terminal",
+    style_editorial: "Nordic Editorial",
+    style_bento: "Atmospheric Bento",
+    nav_group_analytics: "Inteligencia Comercial",
+    nav_group_data: "Ingeniería de Datos",
     nav_overview: "Resumen",
     nav_timeseries: "Tiempo & Pronóstico",
     nav_products: "Productos & ABC",
@@ -83,6 +89,27 @@ const DICT = {
     go_mapping: "Ir a Mapping Studio",
     no_projects: "Aún no tienes proyectos. Crea uno desde tus archivos/carpetas o carga los proyectos demo.",
     dow_names: ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"],
+    settings: "Configuración",
+    add_files_btn: "+ Archivos",
+    customize_view: "Personalizar",
+    done_customizing: "Listo",
+    new_custom_panel: "+ Nuevo Panel",
+    reset_layout: "Restablecer vista",
+    hidden_panels: "Paneles ocultos:",
+    hidden_kpis: "KPIs ocultos:",
+    customize_hint: "Arrastra desde ⠿ o usa ↑/↓ (Espacio + flechas con teclado) para mover paneles, cambiar su ancho u ocultarlos.",
+    kpi_strip_title: "Indicadores Clave (KPIs)",
+    width_half: "50%",
+    width_full: "100%",
+    hide_panel: "Ocultar",
+    edit_panel: "Editar",
+    delete_panel: "Eliminar",
+    move_up: "Mover antes",
+    move_down: "Mover después",
+    kbd_reorder_idle: "Espacio para mover",
+    kbd_reorder_grabbed: "Flechas para mover · Espacio soltar · Esc cancelar",
+    global_settings: "Configuración General",
+    project_settings: "Proyecto",
   },
   en: {
     sync_now: "Sync Now",
@@ -91,6 +118,12 @@ const DICT = {
     export_xlsx: "Excel (.xlsx)",
     export_csv: "Cleaned CSV (.csv)",
     export_parquet: "Parquet (.parquet)",
+    style_precision: "Precision FinTech",
+    style_terminal: "Quantum Terminal",
+    style_editorial: "Nordic Editorial",
+    style_bento: "Atmospheric Bento",
+    nav_group_analytics: "Sales Intelligence",
+    nav_group_data: "Data Engineering",
     nav_overview: "Overview",
     nav_timeseries: "Time & Forecast",
     nav_products: "Products & ABC",
@@ -168,23 +201,114 @@ const DICT = {
     go_mapping: "Open Mapping Studio",
     no_projects: "No projects yet. Create one from your files/folders or load the 1-click demo projects.",
     dow_names: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+    settings: "Settings",
+    add_files_btn: "+ Files",
+    customize_view: "Customize",
+    done_customizing: "Done",
+    new_custom_panel: "+ New Panel",
+    reset_layout: "Reset layout",
+    hidden_panels: "Hidden panels:",
+    hidden_kpis: "Hidden KPIs:",
+    customize_hint: "Drag via ⠿ or use ↑/↓ (Space + arrows via keyboard) to reorder panels, resize width, or hide modules.",
+    kpi_strip_title: "Key Performance Indicators (KPIs)",
+    width_half: "50%",
+    width_full: "100%",
+    hide_panel: "Hide",
+    edit_panel: "Edit",
+    delete_panel: "Delete",
+    move_up: "Move earlier",
+    move_down: "Move later",
+    kbd_reorder_idle: "Space to reorder",
+    kbd_reorder_grabbed: "Arrows to move · Space to drop · Esc to cancel",
+    global_settings: "General Settings",
+    project_settings: "Project",
   },
 };
+
+const COL_LABELS = {
+  es: {
+    _date: "Fecha (_date)",
+    _date_day: "Día (_date_day)",
+    _month: "Mes (_month)",
+    _quarter: "Trimestre (_quarter)",
+    _year: "Año (_year)",
+    _dow: "Día Semana (_dow)",
+    _revenue: "Ingresos Netos (_revenue)",
+    _profit: "Utilidad Bruta (_profit)",
+    _cost: "Costo (_cost)",
+    _quantity: "Unidades (_quantity)",
+    _unit_price: "Precio Unitario (_unit_price)",
+    _discount: "Descuento (_discount)",
+    _tax: "Impuesto (_tax)",
+    _margin_pct: "Margen % (_margin_pct)",
+    _product: "Producto (_product)",
+    _category: "Categoría (_category)",
+    _customer: "Cliente (_customer)",
+    _order_id: "Pedido (_order_id)",
+    _region: "Sucursal / Región (_region)",
+    _channel: "Canal (_channel)",
+    _salesperson: "Vendedor (_salesperson)",
+    _payment_method: "Método de Pago (_payment_method)",
+    _status: "Estado (_status)",
+    _source_folder: "Carpeta Origen (_source_folder)",
+    _source_file: "Archivo Fuente (_source_file)",
+  },
+  en: {
+    _date: "Date (_date)",
+    _date_day: "Day (_date_day)",
+    _month: "Month (_month)",
+    _quarter: "Quarter (_quarter)",
+    _year: "Year (_year)",
+    _dow: "Day of Week (_dow)",
+    _revenue: "Net Revenue (_revenue)",
+    _profit: "Gross Profit (_profit)",
+    _cost: "Cost (_cost)",
+    _quantity: "Units (_quantity)",
+    _unit_price: "Unit Price (_unit_price)",
+    _discount: "Discount (_discount)",
+    _tax: "Tax (_tax)",
+    _margin_pct: "Margin % (_margin_pct)",
+    _product: "Product (_product)",
+    _category: "Category (_category)",
+    _customer: "Customer (_customer)",
+    _order_id: "Order ID (_order_id)",
+    _region: "Branch / Region (_region)",
+    _channel: "Channel (_channel)",
+    _salesperson: "Salesperson (_salesperson)",
+    _payment_method: "Payment Method (_payment_method)",
+    _status: "Status (_status)",
+    _source_folder: "Source Folder (_source_folder)",
+    _source_file: "Source File (_source_file)",
+  },
+};
+
+export function colLabel(col, lang = "es") {
+  if (!col) return "—";
+  return (COL_LABELS[lang] && COL_LABELS[lang][col]) || col;
+}
 
 export function t(lang, key) {
   return (DICT[lang] && DICT[lang][key]) || DICT.es[key] || key;
 }
 
-export function fmtCurrency(val, currency = "USD", lang = "es") {
+export function fmtCurrency(val, currency = "USD", lang = "es", compact = false) {
   if (val === null || val === undefined || Number.isNaN(Number(val))) return "—";
+  const num = Number(val);
+  const locale = lang === "es" ? "es-MX" : "en-US";
+  const digits = compact ? 1 : Math.abs(num) >= 1000 ? 0 : 2;
   try {
-    return new Intl.NumberFormat(lang === "es" ? "es-MX" : "en-US", {
+    return new Intl.NumberFormat(locale, {
       style: "currency",
       currency: currency || "USD",
-      maximumFractionDigits: Math.abs(val) >= 1000 ? 0 : 2,
-    }).format(Number(val));
+      notation: compact ? "compact" : "standard",
+      minimumFractionDigits: compact ? 0 : digits,
+      maximumFractionDigits: digits,
+    }).format(num);
   } catch {
-    return `${currency} ${Number(val).toLocaleString()}`;
+    return new Intl.NumberFormat(locale, {
+      minimumFractionDigits: digits,
+      maximumFractionDigits: digits,
+    }).format(num);
   }
 }
 
@@ -194,6 +318,16 @@ export function fmtNumber(val, decimals = 0, lang = "es") {
     maximumFractionDigits: decimals,
     minimumFractionDigits: decimals,
   }).format(Number(val));
+}
+
+export function fmtPercent(pctVal, decimals = 1, lang = "es", signed = false) {
+  if (pctVal === null || pctVal === undefined || Number.isNaN(Number(pctVal))) return "—";
+  return new Intl.NumberFormat(lang === "es" ? "es-MX" : "en-US", {
+    style: "percent",
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+    signDisplay: signed ? "exceptZero" : "auto",
+  }).format(Number(pctVal) / 100);
 }
 
 export function applyStaticI18n(lang) {

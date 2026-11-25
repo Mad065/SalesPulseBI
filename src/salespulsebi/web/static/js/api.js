@@ -16,6 +16,15 @@ async function req(path, options = {}) {
 }
 
 export const api = {
+  getGlobalSettings: () => req("/settings"),
+  updateGlobalSettings: (data) =>
+    req("/settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    }),
+  resetGlobalSettings: () => req("/settings/reset", { method: "POST" }),
+
   listProjects: () => req("/projects"),
   createProject: (data) =>
     req("/projects", {
