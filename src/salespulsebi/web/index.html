@@ -40,6 +40,11 @@
 
       <div class="topbar-right">
         <div id="project-actions-bar" class="topbar-group hidden">
+          <button type="button" id="btn-copilot-toggle" class="btn btn-primary btn-sm" title="AI Copilot (⌘K / Ctrl+K)" aria-expanded="false" aria-controls="copilot-drawer">
+            <span aria-hidden="true">✦</span>
+            <span data-i18n="copilot_btn">Copiloto IA</span>
+            <kbd class="kbd-hint">⌘K</kbd>
+          </button>
           <button type="button" id="btn-quick-add-files" class="btn btn-secondary btn-sm">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
@@ -202,6 +207,24 @@
             <span data-i18n="nav_dimensions">Canales & Ad-Hoc</span>
           </button>
 
+          <div class="nav-section-label" data-i18n="nav_group_ai">IA & Predictivo</div>
+          <button class="nav-item" data-tab="ai_ml">
+            <span class="nav-icon" aria-hidden="true">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 2v4"/>
+                <path d="M12 18v4"/>
+                <path d="m4.93 4.93 2.83 2.83"/>
+                <path d="m16.24 16.24 2.83 2.83"/>
+                <path d="M2 12h4"/>
+                <path d="M18 12h4"/>
+                <path d="m4.93 19.07 2.83-2.83"/>
+                <path d="m16.24 7.76 2.83-2.83"/>
+                <circle cx="12" cy="12" r="3"/>
+              </svg>
+            </span>
+            <span data-i18n="nav_ai_ml">AI & ML Studio</span>
+          </button>
+
           <div class="nav-section-label" data-i18n="nav_group_data">Ingeniería de Datos</div>
           <button class="nav-item" data-tab="data_studio">
             <span class="nav-icon" aria-hidden="true">
@@ -277,6 +300,9 @@
       </main>
     </div>
   </div>
+
+  <!-- Streaming AI Copilot Side Drawer -->
+  <aside id="copilot-drawer" class="copilot-drawer hidden" role="complementary" aria-label="AI Financial Copilot"></aside>
 
   <!-- Native Modal Dialog & Polite Reorder Announcer -->
   <dialog id="modal-dialog" class="modal-box" closedby="any" aria-labelledby="modal-dialog-title"></dialog>

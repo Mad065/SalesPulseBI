@@ -1340,4 +1340,220 @@
     color: var(--text-secondary);
     line-height: 1.4;
   }
+
+  /* ==========================================================================
+     AI & ML STUDIO + STREAMING COPILOT DRAWER
+     ========================================================================== */
+  .kbd-hint {
+    font-family: var(--font-mono);
+    font-size: var(--text-2xs);
+    padding-block: 0.05rem;
+    padding-inline: 0.3rem;
+    border-radius: var(--radius-xs);
+    background: color-mix(in oklab, var(--text-primary) 14%, transparent);
+    border: 1px solid color-mix(in oklab, var(--text-primary) 20%, transparent);
+    margin-inline-start: 0.25rem;
+  }
+
+  .ai-studio-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: safe center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    margin-block-end: var(--space-4);
+  }
+
+  .whatif-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+    padding-inline: var(--space-4);
+    padding-block-end: var(--space-3);
+  }
+
+  .whatif-slider-row {
+    display: grid;
+    grid-template-columns: minmax(7.5rem, 10rem) 1fr 4rem;
+    align-items: safe center;
+    gap: var(--space-2);
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+  }
+
+  .whatif-slider-row input[type="range"] {
+    accent-color: var(--accent);
+    inline-size: 100%;
+  }
+
+  .whatif-slider-row strong {
+    text-align: end;
+    color: var(--text-primary);
+  }
+
+  .whatif-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+    gap: var(--space-2);
+    padding-inline: var(--space-4);
+    padding-block-end: var(--space-4);
+  }
+
+  .whatif-kpi {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding-block: 0.65rem;
+    padding-inline: 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .whatif-kpi strong {
+    font-size: var(--text-md);
+    color: var(--text-primary);
+  }
+
+  .copilot-drawer {
+    position: fixed;
+    inset-block: 0;
+    inset-inline-end: 0;
+    inline-size: min(29rem, 96vw);
+    z-index: 60;
+    background: var(--bg-surface);
+    border-inline-start: 1px solid var(--border-strong);
+    box-shadow: var(--shadow-lg, var(--shadow-md));
+    display: flex;
+    flex-direction: column;
+    contain: layout style;
+  }
+
+  .copilot-header {
+    display: flex;
+    align-items: safe center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    padding-block: var(--space-3);
+    padding-inline: var(--space-4);
+    border-block-end: 1px solid var(--border);
+  }
+
+  .copilot-context-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    padding-block: 0.5rem;
+    padding-inline: var(--space-4);
+    background: var(--bg-elevated);
+    border-block-end: 1px solid var(--border);
+    font-size: var(--text-2xs);
+  }
+
+  .copilot-messages {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+    padding-block: var(--space-3);
+    padding-inline: var(--space-4);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  .copilot-msg {
+    padding-block: 0.7rem;
+    padding-inline: 0.85rem;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border);
+    font-size: var(--text-sm);
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+  }
+
+  .copilot-msg-user {
+    background: var(--accent-soft);
+    border-color: color-mix(in oklab, var(--accent) 40%, var(--border));
+    align-self: flex-end;
+    max-inline-size: 90%;
+  }
+
+  .copilot-msg-ai {
+    background: var(--bg-elevated);
+    align-self: stretch;
+  }
+
+  .copilot-status-step {
+    font-size: var(--text-xs);
+    color: var(--accent);
+    display: flex;
+    align-items: safe center;
+    gap: 0.4rem;
+    margin-block-end: 0.35rem;
+  }
+
+  .copilot-citations {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin-block-start: 0.5rem;
+    padding-block-start: 0.45rem;
+    border-block-start: 1px solid var(--border);
+  }
+
+  .copilot-tool-details {
+    margin-block-start: 0.45rem;
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+  }
+
+  .copilot-tool-details pre {
+    margin-block: 0.35rem 0;
+    padding: 0.5rem;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xs);
+    overflow-x: auto;
+    font-family: var(--font-mono);
+    font-size: var(--text-2xs);
+  }
+
+  .copilot-composer {
+    padding-block: var(--space-3);
+    padding-inline: var(--space-4);
+    border-block-start: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+  }
+
+  .copilot-composer-row {
+    display: flex;
+    gap: 0.45rem;
+    align-items: flex-end;
+  }
+
+  .copilot-composer textarea {
+    flex: 1 1 auto;
+    resize: none;
+    min-block-size: 2.5rem;
+    max-block-size: 7rem;
+  }
+
+  .news-card-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+    gap: var(--space-3);
+    padding: var(--space-4);
+  }
+
+  .news-item-card {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: var(--space-3);
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
 }

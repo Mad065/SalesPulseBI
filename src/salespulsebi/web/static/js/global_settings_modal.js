@@ -90,6 +90,9 @@ export async function openGlobalSettingsModal({ onSaved = null, initialTab = "cu
       <button type="button" class="tab-btn ${activeTab === "analytics" ? "active" : ""}" data-gstab="analytics" role="tab" aria-selected="${activeTab === "analytics"}">
         ${isEs ? "Analítica e Ingesta" : "Analytics & Ingestion"}
       </button>
+      <button type="button" class="tab-btn ${activeTab === "ai" ? "active" : ""}" data-gstab="ai" role="tab" aria-selected="${activeTab === "ai"}">
+        ✦ ${isEs ? "IA & Proveedores" : "AI & Providers"}
+      </button>
     </div>
 
     <!-- TAB 1: CURRENCY & LANGUAGE -->
@@ -277,6 +280,65 @@ export async function openGlobalSettingsModal({ onSaved = null, initialTab = "cu
       </div>
     </div>
 
+    <!-- TAB 4: MULTI-PROVIDER AI & OBSERVABILITY -->
+    <div id="gs-pane-ai" class="${activeTab === "ai" ? "" : "hidden"}">
+      <div class="settings-section-box">
+        <div class="card-header">
+          <h2 class="card-title">${isEs ? "Proveedor LLM Multi-Modelo (Local o Nube)" : "Multi-Provider LLM Routing (Local or Cloud)"}</h2>
+          <button type="button" id="gs-ai-test" class="btn btn-secondary btn-xs">${isEs ? "Probar conexión" : "Test connection"}</button>
+        </div>
+        <p class="card-subtitle" style="margin-block-end:var(--space-2);">
+          ${
+            isEs
+              ? "Las claves API se leen exclusivamente desde variables de entorno (OPENAI_API_KEY, GEMINI_API_KEY, ANTHROPIC_API_KEY o SALESPULSEBI_AI_API_KEY) y nunca se guardan en el navegador."
+              : "API keys are read strictly from environment variables (OPENAI_API_KEY, GEMINI_API_KEY, ANTHROPIC_API_KEY, or SALESPULSEBI_AI_API_KEY) and never stored in the browser."
+          }
+        </p>
+        <div class="form-grid-3">
+          <div class="form-field">
+            <label class="form-label" for="gs-ai-provider">${isEs ? "Proveedor activo" : "Active Provider"}</label>
+            <select id="gs-ai-provider" class="input full-width">
+              <option value="disabled" ${(cfg.ai_provider || "disabled") === "disabled" ? "selected" : ""}>${isEs ? "Desactivado (Solo Determinista Local)" : "Disabled (Local Deterministic Only)"}</option>
+              <option value="ollama" ${cfg.ai_provider === "ollama" ? "selected" : ""}>Ollama (100% Local)</option>
+              <option value="openai" ${cfg.ai_provider === "openai" ? "selected" : ""}>OpenAI</option>
+              <option value="gemini" ${cfg.ai_provider === "gemini" ? "selected" : ""}>Google Gemini</option>
+              <option value="anthropic" ${cfg.ai_provider === "anthropic" ? "selected" : ""}>Anthropic Claude</option>
+              <option value="openai_compatible" ${cfg.ai_provider === "openai_compatible" ? "selected" : ""}>OpenAI-Compatible (vLLM / LM Studio)</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label class="form-label" for="gs-ai-base-url">${isEs ? "URL Base (opcional)" : "Base URL (optional)"}</label>
+            <input id="gs-ai-base-url" class="input full-width" placeholder="http://127.0.0.1:11434" value="${escapeHtml(cfg.ai_base_url || "")}" />
+          </div>
+          <div class="form-field">
+            <label class="form-label" for="gs-ai-budget">${isEs ? "Presupuesto mensual (USD)" : "Monthly Budget (USD)"}</label>
+            <input id="gs-ai-budget" type="number" step="0.5" min="0" class="input full-width tabular" value="${escapeHtml(cfg.ai_monthly_budget_usd || "25")}" />
+          </div>
+        </div>
+        <div class="form-grid-3">
+          <div class="form-field">
+            <label class="form-label" for="gs-ai-fast">${isEs ? "Modelo Rápido (fast tier)" : "Fast Tier Model"}</label>
+            <input id="gs-ai-fast" class="input full-width" placeholder="llama3.2 / gpt-4o-mini / gemini-2.0-flash" value="${escapeHtml(cfg.ai_fast_model || "")}" />
+          </div>
+          <div class="form-field">
+            <label class="form-label" for="gs-ai-reasoning">${isEs ? "Modelo Razonamiento" : "Reasoning Model"}</label>
+            <input id="gs-ai-reasoning" class="input full-width" placeholder="qwen2.5:14b / gpt-4o / gemini-2.5-pro" value="${escapeHtml(cfg.ai_reasoning_model || "")}" />
+          </div>
+          <div class="form-field">
+            <label class="form-label" for="gs-ai-embed">${isEs ? "Modelo Embeddings (RAG)" : "Embeddings Model (RAG)"}</label>
+            <input id="gs-ai-embed" class="input full-width" placeholder="nomic-embed-text" value="${escapeHtml(cfg.ai_embedding_model || "")}" />
+          </div>
+        </div>
+        <label class="checkbox-pill">
+          <input id="gs-ai-redact-pii" type="checkbox" ${cfg.ai_redact_pii !== false ? "checked" : ""} />
+          <span>${isEs ? "Redactar PII y secretos automáticamente antes de llamadas a la nube" : "Automatically redact PII and secrets before cloud LLM calls"}</span>
+        </label>
+        <div id="gs-ai-test-result" class="fx-preview-banner tabular" style="margin-block-start:var(--space-2);">${
+          isEs ? "Telemetría IA cargando..." : "Loading AI telemetry..."
+        }</div>
+      </div>
+    </div>
+
     <div class="pagination-bar" style="justify-content:space-between;margin-block-start:var(--space-3);">
       <button type="button" id="gs-factory-reset" class="btn btn-ghost btn-sm">${isEs ? "Restablecer valores de fábrica" : "Reset to factory defaults"}</button>
       <div class="card-toolbar">
@@ -318,7 +380,37 @@ export async function openGlobalSettingsModal({ onSaved = null, initialTab = "cu
     dialog.querySelector("#gs-pane-currency").classList.toggle("hidden", activeTab !== "currency");
     dialog.querySelector("#gs-pane-appearance").classList.toggle("hidden", activeTab !== "appearance");
     dialog.querySelector("#gs-pane-analytics").classList.toggle("hidden", activeTab !== "analytics");
+    dialog.querySelector("#gs-pane-ai")?.classList.toggle("hidden", activeTab !== "ai");
   }
+
+  // Load AI status & telemetry summary inside AI settings tab
+  const aiResultEl = dialog.querySelector("#gs-ai-test-result");
+  Promise.all([api.aiStatus(), api.aiTelemetry()])
+    .then(([st, tel]) => {
+      if (!aiResultEl) return;
+      aiResultEl.textContent = isEs
+        ? `Estado: ${st.provider} (${st.api_key_configured ? "API Key detectada" : "Sin API Key en env"}) · Llamadas: ${tel.total_calls} · Costo est.: $${tel.total_estimated_cost_usd} USD · Latencia prom.: ${tel.avg_latency_ms} ms`
+        : `Status: ${st.provider} (${st.api_key_configured ? "API Key detected" : "No env API Key"}) · Calls: ${tel.total_calls} · Est. cost: $${tel.total_estimated_cost_usd} USD · Avg latency: ${tel.avg_latency_ms} ms`;
+    })
+    .catch(() => {});
+
+  dialog.querySelector("#gs-ai-test")?.addEventListener("click", async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    try {
+      const res = await api.aiTestConnection({
+        provider: dialog.querySelector("#gs-ai-provider").value,
+        base_url: dialog.querySelector("#gs-ai-base-url").value.trim() || null,
+        model: dialog.querySelector("#gs-ai-fast").value.trim() || null,
+      });
+      if (aiResultEl) aiResultEl.textContent = `${res.ok ? "✓" : "✕"} ${res.message}`;
+      showToast(res.message, res.ok ? "success" : "error");
+    } catch (err) {
+      showToast(err.message, "error");
+    } finally {
+      btn.disabled = false;
+    }
+  });
 
   dialog.querySelectorAll("[data-gstab]").forEach((btn) =>
     btn.addEventListener("click", () => switchTab(btn.dataset.gstab))
@@ -470,6 +562,13 @@ export async function openGlobalSettingsModal({ onSaved = null, initialTab = "cu
         default_dedup_mode: dedupMode,
         default_exclude_negative_revenue: excludeNeg,
         default_date_dayfirst: dateDayfirst,
+        ai_provider: dialog.querySelector("#gs-ai-provider")?.value || "disabled",
+        ai_base_url: dialog.querySelector("#gs-ai-base-url")?.value.trim() || null,
+        ai_fast_model: dialog.querySelector("#gs-ai-fast")?.value.trim() || "",
+        ai_reasoning_model: dialog.querySelector("#gs-ai-reasoning")?.value.trim() || "",
+        ai_embedding_model: dialog.querySelector("#gs-ai-embed")?.value.trim() || "",
+        ai_redact_pii: dialog.querySelector("#gs-ai-redact-pii")?.checked ?? true,
+        ai_monthly_budget_usd: dialog.querySelector("#gs-ai-budget")?.value.trim() || "25",
         apply_currency_to_existing: applyToExisting,
       });
       savedCommitted = true;

@@ -8,7 +8,13 @@ import { escapeHtml } from "./hub.js";
 export async function renderCustomers(container, onGoMapping) {
   const proj = state.activeProject;
   const lang = state.lang;
-  const data = await api.analytics(proj.id, "customers", state.filters);
+  const [data, churnData] = await Promise.all([
+    api.analytics(proj.id, "customers", state.filters),
+    api.ml(proj.id, "churn", { filters: state.filters, limit: 200 }).catch(() => ({ available: false })),
+  ]);
+  const churnByCustomer = new Map(
+    ((churnData && churnData.customers) || []).map((c) => [c.customer, c])
+  );
 
   if (!data.available) {
     container.innerHTML = `
@@ -183,11 +189,12 @@ export async function renderCustomers(container, onGoMapping) {
           const rows = (data.top_customers || []).filter((c) => !segFilter || c.segment === segFilter);
           wrap.innerHTML = `
             <table class="data-table">
-              <thead><tr><th>Customer</th><th>Segment</th><th class="num">Recency (d)</th><th class="num">Freq</th><th class="num">Monetary</th><th class="num">RFM</th></tr></thead>
+              <thead><tr><th>Customer</th><th>Segment</th><th class="num">Recency (d)</th><th class="num">Freq</th><th class="num">Monetary</th><th class="num">RFM</th><th class="num">Churn ML</th><th class="num">CLV 90d</th></tr></thead>
               <tbody>
                 ${rows
-                  .map(
-                    (c) => `
+                  .map((c) => {
+                    const ch = churnByCustomer.get(c.customer);
+                    return `
                   <tr class="row-clickable" data-cust="${escapeHtml(c.customer)}">
                     <td>${escapeHtml(c.customer)}</td>
                     <td><span class="pill ${c.segment === "Champions" ? "pill-emerald" : c.segment === "At Risk" ? "pill-rose" : "pill-accent"}">${escapeHtml(c.segment)}</span></td>
@@ -195,8 +202,10 @@ export async function renderCustomers(container, onGoMapping) {
                     <td class="num">${fmtNumber(c.frequency, 0, lang)}</td>
                     <td class="num">${fmtCurrency(c.monetary, proj.currency, lang)}</td>
                     <td class="num tabular">${c.r_score}-${c.f_score}-${c.m_score}</td>
-                  </tr>`
-                  )
+                    <td class="num">${ch ? `<span class="pill ${ch.risk_tier === "high" ? "pill-rose" : ch.risk_tier === "medium" ? "pill-amber" : "pill-emerald"} tabular">${fmtPercent(ch.churn_probability_pct, 1, lang)}</span>` : "—"}</td>
+                    <td class="num">${ch ? fmtCurrency(ch.expected_clv_90d, proj.currency, lang) : "—"}</td>
+                  </tr>`;
+                  })
                   .join("")}
               </tbody>
             </table>`;

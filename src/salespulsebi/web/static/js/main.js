@@ -1,5 +1,6 @@
 import { api } from "./api.js";
 import { disposeChartsIn } from "./charts.js";
+import { initCopilot, resetCopilotForProject, setCopilotOpen } from "./copilot.js";
 import { openCustomPanelModal } from "./custom_panels.js";
 import { openGlobalSettingsModal } from "./global_settings_modal.js";
 import { applyStaticI18n, fmtNumber, t } from "./i18n.js";
@@ -12,6 +13,7 @@ import {
   setTheme,
   state,
 } from "./state.js";
+import { renderAiMl } from "./views/ai_ml.js";
 import { renderCustomers } from "./views/customers.js";
 import { renderDataStudio } from "./views/data_studio.js";
 import { renderDimensions } from "./views/dimensions.js";
@@ -165,11 +167,13 @@ async function openProject(projectId, tab = "overview") {
 
   updateCapabilityBadges(detail.capabilities);
   updateChromeVisibility(true);
+  resetCopilotForProject();
   await renderActiveTab();
 }
 
 async function goHub() {
   disposeChartsIn(viewContainer);
+  setCopilotOpen(false);
   state.activeProject = null;
   state.customizingView = false;
   updateChromeVisibility(false);
@@ -199,6 +203,8 @@ async function renderActiveTab() {
       await renderCustomers(viewContainer, () => switchTab("data_studio"));
     } else if (state.activeTab === "dimensions") {
       await renderDimensions(viewContainer);
+    } else if (state.activeTab === "ai_ml") {
+      await renderAiMl(viewContainer, () => switchTab("data_studio"));
     } else if (state.activeTab === "data_studio") {
       await renderDataStudio(viewContainer, () => openProject(state.activeProject.id, "data_studio"));
     }
@@ -417,5 +423,10 @@ async function bootApp() {
 
   await goHub();
 }
+
+initCopilot({
+  navigateTab: (tab) => switchTab(tab),
+  refreshProject: () => refreshActiveProject(),
+});
 
 bootApp();

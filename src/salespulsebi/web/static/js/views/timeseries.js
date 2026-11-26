@@ -5,10 +5,25 @@ import { renderManagedDashboard } from "../layout_manager.js";
 import { state } from "../state.js";
 import { escapeHtml } from "./hub.js";
 
+let forecastEngineMode = "holt";
+
 export async function renderTimeseries(container, onGoMapping) {
   const proj = state.activeProject;
   const lang = state.lang;
   const data = await api.analytics(proj.id, "timeseries", state.filters);
+  let automlOverlay = null;
+  if (data.available && forecastEngineMode === "automl") {
+    try {
+      automlOverlay = await api.ml(proj.id, "forecast", {
+        filters: state.filters,
+        target_metric: "revenue",
+        granularity: state.filters.granularity,
+        horizon_days: state.filters.forecast_horizon,
+      });
+    } catch {
+      automlOverlay = null;
+    }
+  }
 
   if (!data.available) {
     container.innerHTML = `
@@ -23,7 +38,12 @@ export async function renderTimeseries(container, onGoMapping) {
 
   const p = palette();
   const series = data.series || [];
-  const forecast = data.forecast || [];
+  const forecast =
+    automlOverlay && automlOverlay.available ? automlOverlay.forecast || [] : data.forecast || [];
+  const fcLabel =
+    automlOverlay && automlOverlay.available
+      ? `AutoML (${automlOverlay.winner_model})`
+      : "Forecast";
   const allPeriods = [...series.map((r) => r.period), ...forecast.map((f) => f.period)];
   const actualData = [...series.map((r) => r.revenue), ...forecast.map(() => null)];
   const maData = [...series.map((r) => r.moving_avg), ...forecast.map(() => null)];
@@ -62,6 +82,10 @@ export async function renderTimeseries(container, onGoMapping) {
                   )
                   .join("")}
               </select>
+              <select id="ts-fc-engine" class="input input-sm" aria-label="Forecast engine">
+                <option value="holt" ${forecastEngineMode === "holt" ? "selected" : ""}>Holt-Winters</option>
+                <option value="automl" ${forecastEngineMode === "automl" ? "selected" : ""}>AutoML</option>
+              </select>
             </div>
           </div>
           <div id="ts-main-chart" class="chart-box-tall"></div>
@@ -75,6 +99,10 @@ export async function renderTimeseries(container, onGoMapping) {
           state.filters.forecast_horizon = Number(e.target.value);
           renderTimeseries(container, onGoMapping);
         });
+        panelEl.querySelector("#ts-fc-engine")?.addEventListener("change", (e) => {
+          forecastEngineMode = e.target.value;
+          renderTimeseries(container, onGoMapping);
+        });
         mountChart(panelEl.querySelector("#ts-main-chart"), {
           legend: { textStyle: { color: p.text }, bottom: 0 },
           dataZoom: [{ type: "inside" }, { type: "slider", height: 18, bottom: 26 }],
@@ -84,7 +112,7 @@ export async function renderTimeseries(container, onGoMapping) {
           series: [
             { name: "Actual", type: "line", data: actualData, smooth: true, lineStyle: { width: 2.5 } },
             { name: "Moving Avg", type: "line", data: maData, smooth: true, symbol: "none", lineStyle: { width: 1.5, type: "dashed" } },
-            { name: "Forecast", type: "line", data: fcData, smooth: true, lineStyle: { width: 2.5, type: "dotted", color: p.up }, itemStyle: { color: p.up } },
+            { name: fcLabel, type: "line", data: fcData, smooth: true, lineStyle: { width: 2.5, type: "dotted", color: p.up }, itemStyle: { color: p.up } },
             { name: "Upper 95%", type: "line", data: upperBand, symbol: "none", lineStyle: { opacity: 0.3, type: "dashed", color: p.up } },
             { name: "Lower 95%", type: "line", data: lowerBand, symbol: "none", lineStyle: { opacity: 0.3, type: "dashed", color: p.up } },
           ],

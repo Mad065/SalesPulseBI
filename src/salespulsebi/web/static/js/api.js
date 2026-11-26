@@ -94,6 +94,77 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
+  ml: (projectId, endpoint, body = {}) =>
+    req(`/projects/${projectId}/ml/${endpoint}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  mlModels: (projectId) => req(`/projects/${projectId}/ml/models`),
+
+  aiStatus: () => req("/ai/status"),
+  aiTelemetry: (projectId = null) =>
+    req(`/ai/telemetry${projectId ? `?project_id=${encodeURIComponent(projectId)}` : ""}`),
+  aiTestConnection: (payload = {}) =>
+    req("/ai/test-connection", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
+
+  listDocuments: (projectId) => req(`/projects/${projectId}/documents`),
+  extractDocument: (projectId, file, docType = "auto") => {
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("doc_type", docType);
+    return req(`/projects/${projectId}/documents/extract`, { method: "POST", body: fd });
+  },
+  commitDocument: (projectId, docId, payload = {}) =>
+    req(`/projects/${projectId}/documents/${docId}/commit`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
+  indexDocument: (projectId, file, meta = {}) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    if (meta.doc_type) fd.append("doc_type", meta.doc_type);
+    if (meta.as_of_date) fd.append("as_of_date", meta.as_of_date);
+    if (meta.currency) fd.append("currency", meta.currency);
+    return req(`/projects/${projectId}/documents/index`, { method: "POST", body: fd });
+  },
+  askDocuments: (projectId, payload) =>
+    req(`/projects/${projectId}/documents/ask`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
+  reconcileDocuments: (projectId, payload = {}) =>
+    req(`/projects/${projectId}/documents/reconcile`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
+  deleteDocument: (projectId, docId) =>
+    req(`/projects/${projectId}/documents/${docId}`, { method: "DELETE" }),
+
+  marketSentiment: (projectId, payload = {}) =>
+    req(`/projects/${projectId}/market/sentiment`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
+  projectAlerts: (projectId, refresh = false) =>
+    req(`/projects/${projectId}/market/alerts${refresh ? "?refresh=true" : ""}`),
+  acknowledgeAlert: (projectId, alertId) =>
+    req(`/projects/${projectId}/market/alerts/${alertId}/ack`, { method: "POST" }),
+  projectDiagnostics: (projectId, filters = {}) =>
+    req(`/projects/${projectId}/market/diagnostics`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(filters),
+    }),
+
   async downloadExport(projectId, format, filters) {
     const res = await fetch(`${BASE}/projects/${projectId}/export/${format}`, {
       method: "POST",
