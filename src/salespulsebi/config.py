@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -22,6 +24,19 @@ class Settings(BaseSettings):
     port: int = 8420
     default_currency: str = "USD"
     max_upload_mb: int = 250
+
+    # Multi-provider AI / LLM configuration (secrets stay in env vars via SecretStr)
+    ai_provider: Literal[
+        "disabled", "ollama", "openai", "gemini", "anthropic", "openai_compatible"
+    ] = "disabled"
+    ai_api_key: SecretStr | None = None
+    ai_base_url: str | None = None
+    ai_fast_model: str = ""
+    ai_reasoning_model: str = ""
+    ai_embedding_model: str = ""
+    ai_ttft_timeout_s: float = 8.0
+    ai_total_timeout_s: float = 35.0
+    ai_max_output_tokens: int = 1200
 
     @property
     def db_path(self) -> Path:
@@ -48,6 +63,19 @@ class Settings(BaseSettings):
         path = self.project_dir(project_id) / "raw"
         path.mkdir(parents=True, exist_ok=True)
         return path
+
+    def project_models_dir(self, project_id: str) -> Path:
+        path = self.project_dir(project_id) / "models"
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    def project_docs_dir(self, project_id: str) -> Path:
+        path = self.project_dir(project_id) / "documents"
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    def project_rag_db_path(self, project_id: str) -> Path:
+        return self.project_dir(project_id) / "project_rag.duckdb"
 
     def project_parquet_path(self, project_id: str) -> Path:
         return self.project_dir(project_id) / "dataset.parquet"

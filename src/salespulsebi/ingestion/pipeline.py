@@ -361,6 +361,7 @@ class ProjectIngestionPipeline:
             health_score=health_score,
             synced=True,
         )
+        self.db.invalidate_project_ai_caches(project_id)
 
         duration_ms = int((time.perf_counter() - t0) * 1000)
         self.db.record_sync(

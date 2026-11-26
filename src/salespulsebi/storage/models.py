@@ -79,6 +79,23 @@ ThemeMode = Literal["dark", "light", "system"]
 LocaleCode = Literal["es", "en"]
 GranularityType = Literal["day", "week", "month", "quarter", "year"]
 DedupMode = Literal["exact", "order_product"]
+AIProviderType = Literal[
+    "disabled", "ollama", "openai", "gemini", "anthropic", "openai_compatible"
+]
+
+
+def _validate_non_negative_decimal(v: Any, field_name: str = "amount") -> Decimal:
+    if isinstance(v, bool) or v is None:
+        raise ValueError(f"{field_name} must be a non-negative number")
+    try:
+        dec = v if isinstance(v, Decimal) else Decimal(str(v).strip())
+    except (InvalidOperation, ValueError) as exc:
+        raise ValueError(f"Invalid decimal {field_name}") from exc
+    if not dec.is_finite() or dec < Decimal("0") or dec > Decimal("1000000000"):
+        raise ValueError(f"{field_name} must be finite and >= 0")
+    with localcontext() as ctx:
+        ctx.prec = 28
+        return dec.quantize(Decimal("0.01"), rounding=ROUND_HALF_EVEN)
 
 
 def _format_decimal_plain(v: Decimal) -> str:
@@ -150,7 +167,19 @@ class GlobalSettings(BaseModel):
     default_dedup_mode: DedupMode = "exact"
     default_exclude_negative_revenue: bool = False
     default_date_dayfirst: bool | None = None
+    ai_provider: AIProviderType = "disabled"
+    ai_base_url: str | None = Field(default=None, max_length=255)
+    ai_fast_model: str = Field(default="", max_length=120)
+    ai_reasoning_model: str = Field(default="", max_length=120)
+    ai_embedding_model: str = Field(default="", max_length=120)
+    ai_redact_pii: bool = True
+    ai_monthly_budget_usd: ExchangeRateDecimal = Decimal("25.00")
     updated_at: str | None = None
+
+    @field_validator("ai_monthly_budget_usd", mode="before")
+    @classmethod
+    def _val_ai_budget(cls, v: Any) -> Decimal:
+        return _validate_non_negative_decimal(v, "ai_monthly_budget_usd")
 
     @field_validator("default_currency", mode="before")
     @classmethod
@@ -188,7 +217,21 @@ class GlobalSettingsUpdate(BaseModel):
     default_dedup_mode: DedupMode | None = None
     default_exclude_negative_revenue: bool | None = None
     default_date_dayfirst: bool | None = None
+    ai_provider: AIProviderType | None = None
+    ai_base_url: str | None = Field(default=None, max_length=255)
+    ai_fast_model: str | None = Field(default=None, max_length=120)
+    ai_reasoning_model: str | None = Field(default=None, max_length=120)
+    ai_embedding_model: str | None = Field(default=None, max_length=120)
+    ai_redact_pii: bool | None = None
+    ai_monthly_budget_usd: ExchangeRateDecimal | None = None
     apply_currency_to_existing: bool = False
+
+    @field_validator("ai_monthly_budget_usd", mode="before")
+    @classmethod
+    def _val_ai_budget_opt(cls, v: Any) -> Decimal | None:
+        if v is None:
+            return None
+        return _validate_non_negative_decimal(v, "ai_monthly_budget_usd")
 
     @field_validator("default_currency", mode="before")
     @classmethod

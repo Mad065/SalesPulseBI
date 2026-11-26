@@ -117,6 +117,102 @@ CREATE TABLE IF NOT EXISTS app_settings (
     settings_json TEXT NOT NULL DEFAULT '{}',
     updated_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS project_ml_models (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    target_metric TEXT NOT NULL,
+    granularity TEXT NOT NULL,
+    winner_model TEXT NOT NULL,
+    candidates_json TEXT NOT NULL DEFAULT '[]',
+    metrics_json TEXT NOT NULL DEFAULT '{}',
+    feature_importance_json TEXT NOT NULL DEFAULT '[]',
+    data_hash TEXT NOT NULL DEFAULT '',
+    artifact_path TEXT,
+    trained_at TEXT NOT NULL,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+    UNIQUE (project_id, target_metric, granularity)
+);
+
+CREATE TABLE IF NOT EXISTS project_documents (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    filename TEXT NOT NULL,
+    doc_type TEXT NOT NULL DEFAULT 'other',
+    file_path TEXT NOT NULL,
+    file_hash TEXT NOT NULL DEFAULT '',
+    page_count INTEGER NOT NULL DEFAULT 0,
+    as_of_date TEXT,
+    period_start TEXT,
+    period_end TEXT,
+    currency TEXT,
+    status TEXT NOT NULL DEFAULT 'uploaded',
+    extracted_json TEXT,
+    validation_errors_json TEXT NOT NULL DEFAULT '[]',
+    ingested_to_dataset INTEGER NOT NULL DEFAULT 0,
+    indexed_in_rag INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS ai_telemetry_spans (
+    id TEXT PRIMARY KEY,
+    trace_id TEXT NOT NULL,
+    project_id TEXT,
+    feature_name TEXT NOT NULL,
+    prompt_version TEXT NOT NULL DEFAULT 'v1',
+    provider TEXT NOT NULL,
+    model_id TEXT NOT NULL,
+    input_tokens INTEGER NOT NULL DEFAULT 0,
+    output_tokens INTEGER NOT NULL DEFAULT 0,
+    cached_tokens INTEGER NOT NULL DEFAULT 0,
+    estimated_cost_usd TEXT NOT NULL DEFAULT '0.000000',
+    latency_ms INTEGER NOT NULL DEFAULT 0,
+    ttft_ms INTEGER NOT NULL DEFAULT 0,
+    tool_calls_count INTEGER NOT NULL DEFAULT 0,
+    validation_retries INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'ok',
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS ai_response_cache (
+    cache_key TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    prompt_version TEXT NOT NULL,
+    model_id TEXT NOT NULL,
+    data_snapshot_hash TEXT NOT NULL,
+    response_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS market_news_cache (
+    id TEXT PRIMARY KEY,
+    query_key TEXT NOT NULL,
+    source TEXT NOT NULL,
+    title TEXT NOT NULL,
+    link TEXT NOT NULL,
+    published_at TEXT,
+    summary TEXT NOT NULL DEFAULT '',
+    sentiment_label TEXT NOT NULL DEFAULT 'neutral',
+    sentiment_score REAL NOT NULL DEFAULT 0.0,
+    impact_tags_json TEXT NOT NULL DEFAULT '[]',
+    fetched_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS project_alerts (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    alert_type TEXT NOT NULL,
+    severity TEXT NOT NULL DEFAULT 'info',
+    title TEXT NOT NULL,
+    body TEXT NOT NULL,
+    metric_value TEXT,
+    acknowledged INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
 """
 
 
@@ -174,7 +270,7 @@ class MetadataDB:
         merged = current.model_dump(exclude={"updated_at"})
         patch_data = payload.model_dump(exclude_unset=True, exclude={"apply_currency_to_existing"})
         for k, v in patch_data.items():
-            if v is not None or k in ("default_base_currency", "default_date_dayfirst"):
+            if v is not None or k in ("default_base_currency", "default_date_dayfirst", "ai_base_url"):
                 merged[k] = v
         now = utcnow_iso()
         validated = GlobalSettings.model_validate({**merged, "updated_at": now})
@@ -653,7 +749,6 @@ class MetadataDB:
             )
             for r in rows
         ]
-
     def delete_saved_view(self, project_id: str, view_id: str) -> bool:
         with self.connect() as conn:
             cur = conn.execute(
@@ -734,3 +829,507 @@ class MetadataDB:
             )
             for r in rows
         ]
+
+    # ── ML Model Registry ──────────────────────────────────────────────────
+
+    def upsert_ml_model(
+        self,
+        *,
+        project_id: str,
+        target_metric: str,
+        granularity: str,
+        winner_model: str,
+        candidates: list[dict[str, object]],
+        metrics: dict[str, object],
+        feature_importance: list[dict[str, object]],
+        data_hash: str,
+        artifact_path: str | None = None,
+    ) -> dict[str, object]:
+        mid = str(uuid.uuid4())
+        now = utcnow_iso()
+        with self.connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO project_ml_models (
+                    id, project_id, target_metric, granularity, winner_model,
+                    candidates_json, metrics_json, feature_importance_json,
+                    data_hash, artifact_path, trained_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(project_id, target_metric, granularity) DO UPDATE SET
+                    winner_model = excluded.winner_model,
+                    candidates_json = excluded.candidates_json,
+                    metrics_json = excluded.metrics_json,
+                    feature_importance_json = excluded.feature_importance_json,
+                    data_hash = excluded.data_hash,
+                    artifact_path = excluded.artifact_path,
+                    trained_at = excluded.trained_at
+                """,
+                (
+                    mid,
+                    project_id,
+                    target_metric,
+                    granularity,
+                    winner_model,
+                    json.dumps(candidates),
+                    json.dumps(metrics),
+                    json.dumps(feature_importance),
+                    data_hash,
+                    artifact_path,
+                    now,
+                ),
+            )
+            row = conn.execute(
+                """
+                SELECT * FROM project_ml_models
+                WHERE project_id = ? AND target_metric = ? AND granularity = ?
+                """,
+                (project_id, target_metric, granularity),
+            ).fetchone()
+        assert row is not None
+        return self._row_to_ml_model(row)
+
+    @staticmethod
+    def _row_to_ml_model(row: sqlite3.Row) -> dict[str, object]:
+        return {
+            "id": row["id"],
+            "project_id": row["project_id"],
+            "target_metric": row["target_metric"],
+            "granularity": row["granularity"],
+            "winner_model": row["winner_model"],
+            "candidates": json.loads(row["candidates_json"] or "[]"),
+            "metrics": json.loads(row["metrics_json"] or "{}"),
+            "feature_importance": json.loads(row["feature_importance_json"] or "[]"),
+            "data_hash": row["data_hash"],
+            "artifact_path": row["artifact_path"],
+            "trained_at": row["trained_at"],
+        }
+
+    def get_ml_model(
+        self, project_id: str, target_metric: str, granularity: str
+    ) -> dict[str, object] | None:
+        with self.connect() as conn:
+            row = conn.execute(
+                """
+                SELECT * FROM project_ml_models
+                WHERE project_id = ? AND target_metric = ? AND granularity = ?
+                """,
+                (project_id, target_metric, granularity),
+            ).fetchone()
+        return self._row_to_ml_model(row) if row else None
+
+    def list_ml_models(self, project_id: str) -> list[dict[str, object]]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM project_ml_models WHERE project_id = ? ORDER BY trained_at DESC",
+                (project_id,),
+            ).fetchall()
+        return [self._row_to_ml_model(r) for r in rows]
+
+    def invalidate_project_ai_caches(self, project_id: str) -> None:
+        """Clear cached AI responses and stale ML model pointers when project data changes."""
+        with self.connect() as conn:
+            conn.execute("DELETE FROM ai_response_cache WHERE project_id = ?", (project_id,))
+            conn.execute("DELETE FROM project_ml_models WHERE project_id = ?", (project_id,))
+
+    # ── AI Telemetry & Cache ───────────────────────────────────────────────
+
+    def record_ai_span(
+        self,
+        *,
+        trace_id: str,
+        project_id: str | None,
+        feature_name: str,
+        prompt_version: str,
+        provider: str,
+        model_id: str,
+        input_tokens: int = 0,
+        output_tokens: int = 0,
+        cached_tokens: int = 0,
+        estimated_cost_usd: Decimal = Decimal("0"),
+        latency_ms: int = 0,
+        ttft_ms: int = 0,
+        tool_calls_count: int = 0,
+        validation_retries: int = 0,
+        status: str = "ok",
+    ) -> str:
+        sid = str(uuid.uuid4())
+        now = utcnow_iso()
+        with localcontext() as ctx:
+            ctx.prec = 28
+            cost_str = format(
+                estimated_cost_usd.quantize(Decimal("0.000001"), rounding=ROUND_HALF_EVEN), "f"
+            )
+        with self.connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO ai_telemetry_spans (
+                    id, trace_id, project_id, feature_name, prompt_version, provider, model_id,
+                    input_tokens, output_tokens, cached_tokens, estimated_cost_usd,
+                    latency_ms, ttft_ms, tool_calls_count, validation_retries, status, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    sid,
+                    trace_id,
+                    project_id,
+                    feature_name,
+                    prompt_version,
+                    provider,
+                    model_id,
+                    int(input_tokens),
+                    int(output_tokens),
+                    int(cached_tokens),
+                    cost_str,
+                    int(latency_ms),
+                    int(ttft_ms),
+                    int(tool_calls_count),
+                    int(validation_retries),
+                    status,
+                    now,
+                ),
+            )
+        return sid
+
+    def get_ai_telemetry_summary(
+        self, project_id: str | None = None, limit: int = 50
+    ) -> dict[str, object]:
+        with self.connect() as conn:
+            if project_id:
+                rows = conn.execute(
+                    """
+                    SELECT * FROM ai_telemetry_spans
+                    WHERE project_id = ?
+                    ORDER BY created_at DESC LIMIT ?
+                    """,
+                    (project_id, limit),
+                ).fetchall()
+                all_rows = conn.execute(
+                    "SELECT input_tokens, output_tokens, cached_tokens, estimated_cost_usd, latency_ms, status FROM ai_telemetry_spans WHERE project_id = ?",
+                    (project_id,),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM ai_telemetry_spans ORDER BY created_at DESC LIMIT ?",
+                    (limit,),
+                ).fetchall()
+                all_rows = conn.execute(
+                    "SELECT input_tokens, output_tokens, cached_tokens, estimated_cost_usd, latency_ms, status FROM ai_telemetry_spans"
+                ).fetchall()
+        total_cost = Decimal("0")
+        total_in = 0
+        total_out = 0
+        total_cached = 0
+        latencies: list[int] = []
+        ok_count = 0
+        for r in all_rows:
+            total_in += int(r["input_tokens"] or 0)
+            total_out += int(r["output_tokens"] or 0)
+            total_cached += int(r["cached_tokens"] or 0)
+            try:
+                total_cost += Decimal(str(r["estimated_cost_usd"] or "0"))
+            except Exception:
+                pass
+            latencies.append(int(r["latency_ms"] or 0))
+            if r["status"] == "ok":
+                ok_count += 1
+        avg_lat = int(sum(latencies) / len(latencies)) if latencies else 0
+        return {
+            "total_calls": len(all_rows),
+            "success_rate_pct": round((ok_count / len(all_rows)) * 100.0, 2) if all_rows else 100.0,
+            "total_input_tokens": total_in,
+            "total_output_tokens": total_out,
+            "total_cached_tokens": total_cached,
+            "total_estimated_cost_usd": format(
+                total_cost.quantize(Decimal("0.000001"), rounding=ROUND_HALF_EVEN), "f"
+            ),
+            "avg_latency_ms": avg_lat,
+            "recent_spans": [dict(r) for r in rows],
+        }
+
+    def get_ai_cache(self, cache_key: str, data_snapshot_hash: str) -> dict[str, object] | None:
+        with self.connect() as conn:
+            row = conn.execute(
+                """
+                SELECT response_json FROM ai_response_cache
+                WHERE cache_key = ? AND data_snapshot_hash = ?
+                """,
+                (cache_key, data_snapshot_hash),
+            ).fetchone()
+        if not row:
+            return None
+        try:
+            return json.loads(row["response_json"])
+        except Exception:
+            return None
+
+    def set_ai_cache(
+        self,
+        *,
+        cache_key: str,
+        project_id: str,
+        prompt_version: str,
+        model_id: str,
+        data_snapshot_hash: str,
+        response: dict[str, object],
+    ) -> None:
+        now = utcnow_iso()
+        with self.connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO ai_response_cache (
+                    cache_key, project_id, prompt_version, model_id,
+                    data_snapshot_hash, response_json, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(cache_key) DO UPDATE SET
+                    data_snapshot_hash = excluded.data_snapshot_hash,
+                    response_json = excluded.response_json,
+                    created_at = excluded.created_at
+                """,
+                (
+                    cache_key,
+                    project_id,
+                    prompt_version,
+                    model_id,
+                    data_snapshot_hash,
+                    json.dumps(response),
+                    now,
+                ),
+            )
+
+    # ── Project Documents (OCR + RAG) ──────────────────────────────────────
+
+    def upsert_document(
+        self,
+        *,
+        doc_id: str | None = None,
+        project_id: str,
+        filename: str,
+        doc_type: str,
+        file_path: str,
+        file_hash: str,
+        page_count: int = 0,
+        as_of_date: str | None = None,
+        period_start: str | None = None,
+        period_end: str | None = None,
+        currency: str | None = None,
+        status: str = "uploaded",
+        extracted: dict[str, object] | None = None,
+        validation_errors: list[str] | None = None,
+        ingested_to_dataset: bool = False,
+        indexed_in_rag: bool = False,
+    ) -> dict[str, object]:
+        did = doc_id or str(uuid.uuid4())
+        now = utcnow_iso()
+        with self.connect() as conn:
+            existing = conn.execute(
+                "SELECT id, created_at FROM project_documents WHERE id = ?", (did,)
+            ).fetchone()
+            created_at = existing["created_at"] if existing else now
+            conn.execute(
+                """
+                INSERT INTO project_documents (
+                    id, project_id, filename, doc_type, file_path, file_hash, page_count,
+                    as_of_date, period_start, period_end, currency, status, extracted_json,
+                    validation_errors_json, ingested_to_dataset, indexed_in_rag, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    doc_type = excluded.doc_type,
+                    page_count = excluded.page_count,
+                    as_of_date = excluded.as_of_date,
+                    period_start = excluded.period_start,
+                    period_end = excluded.period_end,
+                    currency = excluded.currency,
+                    status = excluded.status,
+                    extracted_json = excluded.extracted_json,
+                    validation_errors_json = excluded.validation_errors_json,
+                    ingested_to_dataset = excluded.ingested_to_dataset,
+                    indexed_in_rag = excluded.indexed_in_rag,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    did,
+                    project_id,
+                    filename,
+                    doc_type,
+                    file_path,
+                    file_hash,
+                    page_count,
+                    as_of_date,
+                    period_start,
+                    period_end,
+                    currency,
+                    status,
+                    json.dumps(extracted) if extracted is not None else None,
+                    json.dumps(validation_errors or []),
+                    int(ingested_to_dataset),
+                    int(indexed_in_rag),
+                    created_at,
+                    now,
+                ),
+            )
+            row = conn.execute("SELECT * FROM project_documents WHERE id = ?", (did,)).fetchone()
+        assert row is not None
+        return self._row_to_document(row)
+
+    @staticmethod
+    def _row_to_document(row: sqlite3.Row) -> dict[str, object]:
+        return {
+            "id": row["id"],
+            "project_id": row["project_id"],
+            "filename": row["filename"],
+            "doc_type": row["doc_type"],
+            "file_path": row["file_path"],
+            "file_hash": row["file_hash"],
+            "page_count": row["page_count"],
+            "as_of_date": row["as_of_date"],
+            "period_start": row["period_start"],
+            "period_end": row["period_end"],
+            "currency": row["currency"],
+            "status": row["status"],
+            "extracted": json.loads(row["extracted_json"]) if row["extracted_json"] else None,
+            "validation_errors": json.loads(row["validation_errors_json"] or "[]"),
+            "ingested_to_dataset": bool(row["ingested_to_dataset"]),
+            "indexed_in_rag": bool(row["indexed_in_rag"]),
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+        }
+
+    def list_documents(self, project_id: str) -> list[dict[str, object]]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM project_documents WHERE project_id = ? ORDER BY updated_at DESC",
+                (project_id,),
+            ).fetchall()
+        return [self._row_to_document(r) for r in rows]
+
+    def get_document(self, project_id: str, doc_id: str) -> dict[str, object] | None:
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM project_documents WHERE project_id = ? AND id = ?",
+                (project_id, doc_id),
+            ).fetchone()
+        return self._row_to_document(row) if row else None
+
+    def delete_document(self, project_id: str, doc_id: str) -> bool:
+        with self.connect() as conn:
+            cur = conn.execute(
+                "DELETE FROM project_documents WHERE project_id = ? AND id = ?",
+                (project_id, doc_id),
+            )
+            return cur.rowcount > 0
+
+    # ── Market News Cache & Project Alerts ─────────────────────────────────
+
+    def replace_market_news(self, query_key: str, items: list[dict[str, object]]) -> None:
+        now = utcnow_iso()
+        with self.connect() as conn:
+            conn.execute("DELETE FROM market_news_cache WHERE query_key = ?", (query_key,))
+            for it in items:
+                conn.execute(
+                    """
+                    INSERT INTO market_news_cache (
+                        id, query_key, source, title, link, published_at, summary,
+                        sentiment_label, sentiment_score, impact_tags_json, fetched_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        str(it.get("id") or uuid.uuid4()),
+                        query_key,
+                        str(it.get("source") or "RSS"),
+                        str(it.get("title") or ""),
+                        str(it.get("link") or ""),
+                        it.get("published_at"),
+                        str(it.get("summary") or ""),
+                        str(it.get("sentiment_label") or "neutral"),
+                        float(it.get("sentiment_score") or 0.0),
+                        json.dumps(it.get("impact_tags") or []),
+                        now,
+                    ),
+                )
+
+    def get_market_news(self, query_key: str) -> list[dict[str, object]]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM market_news_cache WHERE query_key = ? ORDER BY published_at DESC",
+                (query_key,),
+            ).fetchall()
+        return [
+            {
+                "id": r["id"],
+                "query_key": r["query_key"],
+                "source": r["source"],
+                "title": r["title"],
+                "link": r["link"],
+                "published_at": r["published_at"],
+                "summary": r["summary"],
+                "sentiment_label": r["sentiment_label"],
+                "sentiment_score": r["sentiment_score"],
+                "impact_tags": json.loads(r["impact_tags_json"] or "[]"),
+                "fetched_at": r["fetched_at"],
+            }
+            for r in rows
+        ]
+
+    def replace_project_alerts(
+        self, project_id: str, alerts: list[dict[str, object]]
+    ) -> list[dict[str, object]]:
+        now = utcnow_iso()
+        with self.connect() as conn:
+            conn.execute(
+                "DELETE FROM project_alerts WHERE project_id = ? AND acknowledged = 0",
+                (project_id,),
+            )
+            for al in alerts:
+                conn.execute(
+                    """
+                    INSERT INTO project_alerts (
+                        id, project_id, alert_type, severity, title, body,
+                        metric_value, acknowledged, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)
+                    """,
+                    (
+                        str(al.get("id") or uuid.uuid4()),
+                        project_id,
+                        str(al.get("alert_type") or "info"),
+                        str(al.get("severity") or "info"),
+                        str(al.get("title") or ""),
+                        str(al.get("body") or ""),
+                        al.get("metric_value"),
+                        now,
+                    ),
+                )
+        return self.list_project_alerts(project_id)
+
+    def list_project_alerts(self, project_id: str, limit: int = 30) -> list[dict[str, object]]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM project_alerts
+                WHERE project_id = ?
+                ORDER BY acknowledged ASC, created_at DESC
+                LIMIT ?
+                """,
+                (project_id, limit),
+            ).fetchall()
+        return [
+            {
+                "id": r["id"],
+                "project_id": r["project_id"],
+                "alert_type": r["alert_type"],
+                "severity": r["severity"],
+                "title": r["title"],
+                "body": r["body"],
+                "metric_value": r["metric_value"],
+                "acknowledged": bool(r["acknowledged"]),
+                "created_at": r["created_at"],
+            }
+            for r in rows
+        ]
+
+    def acknowledge_alert(self, project_id: str, alert_id: str) -> bool:
+        with self.connect() as conn:
+            cur = conn.execute(
+                "UPDATE project_alerts SET acknowledged = 1 WHERE project_id = ? AND id = ?",
+                (project_id, alert_id),
+            )
+            return cur.rowcount > 0
