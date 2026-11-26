@@ -10,7 +10,18 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from salespulsebi import __app_name__, __version__
-from salespulsebi.api.routes import analytics, demo, exports, mapping, projects, sources
+from salespulsebi.api.routes import (
+    ai,
+    analytics,
+    demo,
+    documents,
+    exports,
+    mapping,
+    market,
+    ml,
+    projects,
+    sources,
+)
 from salespulsebi.api.routes import settings as settings_routes
 from salespulsebi.config import Settings, get_settings
 from salespulsebi.ingestion.pipeline import ProjectIngestionPipeline
@@ -54,6 +65,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(sources.router, prefix=api_prefix)
     app.include_router(mapping.router, prefix=api_prefix)
     app.include_router(analytics.router, prefix=api_prefix)
+    app.include_router(ml.router, prefix=api_prefix)
+    app.include_router(ai.router, prefix=api_prefix)
+    app.include_router(documents.router, prefix=api_prefix)
+    app.include_router(market.router, prefix=api_prefix)
     app.include_router(exports.router, prefix=api_prefix)
     app.include_router(demo.router, prefix=api_prefix)
 
