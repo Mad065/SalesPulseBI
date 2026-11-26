@@ -9,6 +9,7 @@ import {
   applyGlobalSettingsToState,
   defaultFilters,
   ensureProjectSettings,
+  setSidebarCollapsed,
   setStylePreset,
   setTheme,
   state,
@@ -24,20 +25,27 @@ import { renderTimeseries } from "./views/timeseries.js";
 
 const viewContainer = document.getElementById("view-container");
 const sidebar = document.getElementById("sidebar");
+const sidebarToggleBtn = document.getElementById("btn-sidebar-toggle");
 const filterBar = document.getElementById("filter-bar");
 const crumb = document.getElementById("active-project-crumb");
 const actionsBar = document.getElementById("project-actions-bar");
-const customizeBtn = document.getElementById("btn-customize-view");
 
 function updateChromeVisibility(inProject) {
   sidebar.classList.toggle("hidden", !inProject);
+  sidebar.classList.toggle("is-collapsed", inProject && !!state.sidebarCollapsed);
+  if (sidebarToggleBtn) {
+    sidebarToggleBtn.classList.toggle("hidden", !inProject);
+    sidebarToggleBtn.setAttribute("aria-expanded", String(!state.sidebarCollapsed));
+    const tip = t(state.lang, state.sidebarCollapsed ? "show_sidebar" : "hide_sidebar");
+    sidebarToggleBtn.title = `${tip} (⌘B / Ctrl+B)`;
+    sidebarToggleBtn.setAttribute("aria-label", tip);
+  }
   crumb.classList.toggle("hidden", !inProject);
   actionsBar.classList.toggle("hidden", !inProject);
   filterBar.classList.toggle("hidden", !inProject || state.activeTab === "data_studio");
-  if (customizeBtn) {
-    customizeBtn.classList.toggle("hidden", !inProject || state.activeTab === "data_studio");
-    customizeBtn.setAttribute("aria-pressed", String(!!state.customizingView));
-    customizeBtn.classList.toggle("btn-customize-active", !!state.customizingView);
+  const activeViewBadge = document.getElementById("crumb-active-view");
+  if (activeViewBadge && inProject) {
+    activeViewBadge.textContent = t(state.lang, `nav_${state.activeTab}`);
   }
 }
 
@@ -231,22 +239,31 @@ document.querySelectorAll(".nav-item").forEach((b) =>
   b.addEventListener("click", () => switchTab(b.dataset.tab))
 );
 
+function toggleSidebar() {
+  if (!state.activeProject) return;
+  setSidebarCollapsed(!state.sidebarCollapsed);
+  updateChromeVisibility(true);
+  window.dispatchEvent(new Event("resize"));
+}
+
+document.getElementById("btn-sidebar-toggle")?.addEventListener("click", toggleSidebar);
+document.getElementById("btn-sidebar-collapse-footer")?.addEventListener("click", toggleSidebar);
+
+window.addEventListener("keydown", (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "b" && state.activeProject) {
+    const tag = document.activeElement?.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+    e.preventDefault();
+    toggleSidebar();
+  }
+});
+
 document.getElementById("btn-theme-toggle").onclick = () => {
   const nextTheme = state.theme === "dark" ? "light" : "dark";
   setTheme(nextTheme);
   api.updateGlobalSettings({ theme: nextTheme }).catch(() => {});
   if (state.activeProject) renderActiveTab();
 };
-
-const styleSelect = document.getElementById("style-preset-select");
-if (styleSelect) {
-  styleSelect.addEventListener("change", (e) => {
-    const nextStyle = e.target.value;
-    setStylePreset(nextStyle);
-    api.updateGlobalSettings({ style_preset: nextStyle }).catch(() => {});
-    if (state.activeProject) renderActiveTab();
-  });
-}
 
 document.getElementById("btn-lang-toggle").onclick = () => {
   state.lang = state.lang === "es" ? "en" : "es";
@@ -364,12 +381,6 @@ document.getElementById("crumb-project-currency")?.addEventListener("click", () 
 document.getElementById("btn-quick-add-files")?.addEventListener("click", () =>
   openSettingsForActive("sources")
 );
-document.getElementById("btn-customize-view")?.addEventListener("click", () => {
-  if (!state.activeProject || state.activeTab === "data_studio") return;
-  state.customizingView = !state.customizingView;
-  updateChromeVisibility(true);
-  renderActiveTab();
-});
 
 state.onProjectUpdated = refreshActiveProject;
 

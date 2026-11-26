@@ -1,8 +1,39 @@
 import { api } from "./api.js";
 import { fmtCurrency, fmtNumber, t } from "./i18n.js";
 import { closeDialog, openDialog } from "./modal.js";
-import { SUPPORTED_CURRENCIES, ensureProjectSettings, state } from "./state.js";
+import { SUPPORTED_CURRENCIES, ensureProjectSettings, setStylePreset, state } from "./state.js";
 import { escapeHtml, showToast } from "./views/hub.js";
+
+const STYLE_PRESET_OPTIONS = [
+  {
+    id: "precision",
+    title: "Precision FinTech",
+    descEs: "Geometría suiza, bordes nítidos de 1px y máxima claridad analítica.",
+    descEn: "Swiss editorial geometry, crisp 1px borders, and high analytical clarity.",
+    badge: "Default",
+  },
+  {
+    id: "terminal",
+    title: "Quantum Terminal",
+    descEs: "Alta densidad tipo Bloomberg/TradingView con acentos neón y tipografía tabular.",
+    descEn: "High-density quantitative terminal look with neon accents and tabular precision.",
+    badge: "Quant",
+  },
+  {
+    id: "editorial",
+    title: "Nordic Editorial",
+    descEs: "Tonos cálidos tipo papel, encabezados serif ejecutivos y lectura relajada.",
+    descEn: "Warm paper surfaces, executive serif headings, and comfortable reading.",
+    badge: "Executive",
+  },
+  {
+    id: "bento",
+    title: "Atmospheric Bento",
+    descEs: "Tarjetas modulares redondeadas con superficies traslúcidas y sombras suaves.",
+    descEn: "Rounded modular Bento cards with translucent surfaces and soft elevation.",
+    badge: "Modern",
+  },
+];
 
 export async function openProjectSettingsModal({
   projectId,
@@ -155,23 +186,44 @@ export async function openProjectSettingsModal({
     <!-- TAB 3: LAYOUT & CUSTOM PANELS -->
     <div id="ps-pane-layout" class="${activeTab === "layout" ? "" : "hidden"}">
       <div class="settings-section-box">
+        <h2 class="card-title" style="margin-block-end:0.35rem;">${isEs ? "Estilo Visual del Dashboard (Preset)" : "Dashboard Visual Style Preset"}</h2>
+        <p class="card-subtitle" style="margin-block-end:var(--space-3);">
+          ${
+            isEs
+              ? "Selecciona la personalidad visual, tipografía y densidad cromática de la interfaz."
+              : "Choose the visual personality, typography, and color density across the app."
+          }
+        </p>
+        <div class="style-preset-grid" role="radiogroup" aria-label="${isEs ? "Estilo Visual" : "Visual Style"}">
+          ${STYLE_PRESET_OPTIONS.map(
+            (st) => `
+            <label class="style-preset-card">
+              <input type="radio" name="ps-style-preset" value="${escapeHtml(st.id)}" ${state.style === st.id ? "checked" : ""} />
+              <div class="style-preset-card-head">
+                <span class="style-preset-card-title">${escapeHtml(st.title)}</span>
+                <span class="pill pill-accent">${escapeHtml(st.badge)}</span>
+              </div>
+              <p class="style-preset-card-desc">${escapeHtml(isEs ? st.descEs : st.descEn)}</p>
+            </label>`
+          ).join("")}
+        </div>
+      </div>
+
+      <div class="settings-section-box">
         <h2 class="card-title" style="margin-block-end:0.4rem;">${isEs ? "Personalización de Paneles y Resumen" : "Dashboard Panels & Overview Customization"}</h2>
         <p class="insight-body" style="margin-block-end:var(--space-3);">
           ${
             isEs
-              ? "Activa el modo Personalizar para arrastrar paneles, ajustar su tamaño (50% o 100% de ancho), ocultar módulos que no utilices o crear nuevos paneles personalizados en la vista de Resumen."
-              : "Enable Customize mode to drag panels, switch between half and full width, hide unused modules, or add custom KPI/chart/table panels to Overview."
+              ? "Arrastra directamente cualquier panel desde su icono ⠿ en Inteligencia Comercial, IA & Predictivo o Ingeniería de Datos (Data Studio) para reordenarlo, cambiar su ancho (50% / 100%) u ocultarlo sin necesidad de activar ningún modo."
+              : "Drag any panel directly via its ⠿ handle across Sales Intelligence, AI & Predictive, or Data Engineering (Data Studio) to reorder, resize (50% / 100%), or hide modules immediately."
           }
         </p>
         <div class="card-toolbar" style="margin-block-end:var(--space-3);">
-          <button type="button" id="ps-start-customize" class="btn btn-primary btn-sm">
-            ✦ ${isEs ? "Activar modo Personalizar vista" : "Enter Customize View mode"}
-          </button>
-          <button type="button" id="ps-add-custom-panel" class="btn btn-secondary btn-sm ${onOpenCustomPanelBuilder ? "" : "hidden"}">
+          <button type="button" id="ps-add-custom-panel" class="btn btn-primary btn-sm ${onOpenCustomPanelBuilder ? "" : "hidden"}">
             ${t(lang, "new_custom_panel")}
           </button>
-          <button type="button" id="ps-reset-all-layouts" class="btn btn-ghost btn-sm">
-            ${isEs ? "Restablecer orden de todas las vistas" : "Reset panel order across all views"}
+          <button type="button" id="ps-reset-all-layouts" class="btn btn-secondary btn-sm">
+            ↺ ${isEs ? "Restablecer orden de todas las vistas" : "Reset panel order across all views"}
           </button>
         </div>
         <div id="ps-custom-panels-summary"></div>
@@ -524,10 +576,15 @@ export async function openProjectSettingsModal({
   }
   renderLayoutSummary();
 
-  dialog.querySelector("#ps-start-customize").addEventListener("click", async () => {
-    state.customizingView = true;
-    closeDialog();
-    if (onUpdated) await onUpdated(detail.id);
+  dialog.querySelectorAll('input[name="ps-style-preset"]').forEach((radio) => {
+    radio.addEventListener("change", (e) => {
+      if (e.target.checked) {
+        const nextStyle = e.target.value;
+        setStylePreset(nextStyle);
+        api.updateGlobalSettings({ style_preset: nextStyle }).catch(() => {});
+        if (onUpdated) onUpdated(detail.id);
+      }
+    });
   });
 
   dialog.querySelector("#ps-add-custom-panel")?.addEventListener("click", () => {

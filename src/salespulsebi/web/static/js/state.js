@@ -87,6 +87,7 @@ export const state = {
   theme: initialGlobal.theme === "light" ? "light" : "dark",
   style: initialGlobal.style_preset,
   lang: initialGlobal.locale,
+  sidebarCollapsed: localStorage.getItem("sp_sidebar_collapsed") === "true",
   projects: [],
   activeProject: null,
   activeTab: "overview",
@@ -128,9 +129,19 @@ export function setStylePreset(style) {
   state.globalSettings.style_preset = chosen;
   localStorage.setItem("sp_style", chosen);
   document.documentElement.setAttribute("data-style", chosen);
-  const sel = document.getElementById("style-preset-select");
-  if (sel && sel.value !== chosen) {
-    sel.value = chosen;
+}
+
+export function setSidebarCollapsed(collapsed) {
+  const isCollapsed = !!collapsed;
+  state.sidebarCollapsed = isCollapsed;
+  localStorage.setItem("sp_sidebar_collapsed", String(isCollapsed));
+  const sidebarEl = document.getElementById("sidebar");
+  if (sidebarEl) {
+    sidebarEl.classList.toggle("is-collapsed", isCollapsed);
+  }
+  const toggleBtn = document.getElementById("btn-sidebar-toggle");
+  if (toggleBtn) {
+    toggleBtn.setAttribute("aria-expanded", String(!isCollapsed));
   }
 }
 

@@ -7,8 +7,8 @@ const prefersReducedMotion = () =>
   typeof window !== "undefined" &&
   window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
 
-function moveNodeBefore(container, node, refNode) {
-  if (Object.hasOwn(Element.prototype, "moveBefore")) {
+export function moveNodeBefore(container, node, refNode) {
+  if ("moveBefore" in Element.prototype) {
     container.moveBefore(node, refNode || null);
   } else if (refNode) {
     refNode.before(node);
@@ -25,7 +25,7 @@ export function announceReorder(message) {
   statusEl.textContent = "";
   announceTimer = setTimeout(() => {
     statusEl.textContent = message;
-  }, 140);
+  }, 500);
 }
 
 export function getTabLayout(proj, tabKey) {
@@ -49,11 +49,12 @@ export async function saveTabLayout(proj, tabKey, nextTabLayout) {
   return proj.settings;
 }
 
-function animateFlip(nodes, oldRects) {
+export function animateFlip(nodes, oldRects) {
   if (prefersReducedMotion()) return;
   for (const el of nodes) {
     const prev = oldRects.get(el);
     if (!prev) continue;
+    el.getAnimations?.().forEach((anim) => anim.finish());
     const next = el.getBoundingClientRect();
     const dx = prev.left - next.left;
     const dy = prev.top - next.top;
@@ -81,7 +82,6 @@ export function renderManagedDashboard({
   const lang = state.lang;
   const isEs = lang === "es";
   const layout = getTabLayout(proj, tabKey);
-  const customizing = !!state.customizingView;
 
   const panelMap = new Map(panels.map((p) => [p.id, p]));
   const orderedIds = [
@@ -93,64 +93,65 @@ export function renderManagedDashboard({
   const visiblePanels = orderedIds.filter((id) => !hiddenSet.has(id)).map((id) => panelMap.get(id));
   const hiddenPanels = orderedIds.filter((id) => hiddenSet.has(id)).map((id) => panelMap.get(id));
 
-  const quickBarHtml =
-    !customizing && onOpenNewPanel
-      ? `
-      <div class="overview-quick-bar">
-        <div class="overview-quick-actions">
-          <button type="button" id="lm-quick-new-panel" class="btn btn-secondary btn-sm">
-            ${t(lang, "new_custom_panel")}
-          </button>
-          <button type="button" id="lm-quick-customize" class="btn btn-ghost btn-sm">
-            ✦ ${t(lang, "customize_view")}
-          </button>
-        </div>
-      </div>`
-      : "";
+  const hasCustomLayout =
+    layout.panel_order.length > 0 ||
+    layout.hidden_panels.length > 0 ||
+    Object.keys(layout.panel_spans).length > 0 ||
+    layout.kpi_order.length > 0 ||
+    layout.hidden_kpis.length > 0;
 
-  const customizeBannerHtml = customizing
+  const showUtilityBar =
+    Boolean(onOpenNewPanel) ||
+    hiddenPanels.length > 0 ||
+    Boolean(extraBannerHtml.trim()) ||
+    hasCustomLayout;
+
+  const utilityBarHtml = showUtilityBar
     ? `
-    <div class="customize-banner" role="region" aria-label="${escapeHtml(t(lang, "customize_view"))}">
-      <div class="customize-banner-top">
-        <div>
-          <div class="customize-banner-title">✦ ${isEs ? "Personalizando vista" : "Customizing view"}</div>
-          <div class="card-subtitle">${escapeHtml(t(lang, "customize_hint"))}</div>
-        </div>
-        <div class="card-toolbar">
-          ${
-            onOpenNewPanel
-              ? `<button type="button" id="lm-new-panel" class="btn btn-primary btn-sm">${t(lang, "new_custom_panel")}</button>`
-              : ""
-          }
-          <button type="button" id="lm-reset-layout" class="btn btn-secondary btn-sm">${t(lang, "reset_layout")}</button>
-          <button type="button" id="lm-done-customize" class="btn btn-primary btn-sm">✓ ${t(lang, "done_customizing")}</button>
-        </div>
+    <div class="dashboard-utility-bar" role="region" aria-label="${escapeHtml(t(lang, "customize_view"))}">
+      <div class="dashboard-utility-left">
+        ${
+          hiddenPanels.length
+            ? `
+          <div class="customize-restore-row">
+            <span class="toolbar-label">${t(lang, "hidden_panels")}</span>
+            <div class="chips-row">
+              ${hiddenPanels
+                .map(
+                  (hp) =>
+                    `<button type="button" class="chip chip-restore lm-restore-panel" data-id="${escapeHtml(hp.id)}">+ ${escapeHtml(hp.title)}</button>`
+                )
+                .join("")}
+            </div>
+          </div>`
+            : ""
+        }
+        ${extraBannerHtml}
+        ${
+          !hiddenPanels.length && !extraBannerHtml.trim()
+            ? `<span class="card-subtitle">⠿ ${escapeHtml(t(lang, "customize_hint"))}</span>`
+            : ""
+        }
       </div>
-      ${
-        hiddenPanels.length
-          ? `
-        <div class="customize-restore-row">
-          <span class="toolbar-label">${t(lang, "hidden_panels")}</span>
-          <div class="chips-row">
-            ${hiddenPanels
-              .map(
-                (hp) =>
-                  `<button type="button" class="chip chip-restore lm-restore-panel" data-id="${escapeHtml(hp.id)}">+ ${escapeHtml(hp.title)}</button>`
-              )
-              .join("")}
-          </div>
-        </div>`
-          : ""
-      }
-      ${extraBannerHtml}
+      <div class="dashboard-utility-right">
+        ${
+          onOpenNewPanel
+            ? `<button type="button" id="lm-new-panel" class="btn btn-primary btn-xs">${t(lang, "new_custom_panel")}</button>`
+            : ""
+        }
+        ${
+          hasCustomLayout
+            ? `<button type="button" id="lm-reset-layout" class="btn btn-secondary btn-xs">↺ ${t(lang, "reset_layout")}</button>`
+            : ""
+        }
+      </div>
     </div>`
     : "";
 
   const panelsHtml = visiblePanels
     .map((p) => {
       const span = layout.panel_spans[p.id] || p.defaultSpan || 1;
-      const controlsHtml = customizing
-        ? `
+      const controlsHtml = `
         <div class="panel-customize-bar">
           <div class="panel-customize-left">
             <button
@@ -176,8 +177,7 @@ export function renderManagedDashboard({
             }
             <button type="button" class="btn btn-ghost btn-xs lm-hide-panel">${escapeHtml(t(lang, "hide_panel"))}</button>
           </div>
-        </div>`
-        : "";
+        </div>`;
 
       return `
       <article class="dashboard-panel" data-panel-id="${escapeHtml(p.id)}" data-span="${span}">
@@ -195,9 +195,8 @@ export function renderManagedDashboard({
     : "";
 
   container.innerHTML = `
-    ${quickBarHtml}
-    ${customizeBannerHtml}
-    <div class="dashboard-grid ${customizing ? "is-customizing" : ""}" id="lm-grid">
+    ${utilityBarHtml}
+    <div class="dashboard-grid is-customizing" id="lm-grid">
       ${panelsHtml}
     </div>
     ${emptyStateHtml}
@@ -212,17 +211,6 @@ export function renderManagedDashboard({
       p.mount(panelEl);
     }
   }
-
-  // Quick bar actions (when not customizing)
-  container.querySelector("#lm-quick-new-panel")?.addEventListener("click", () => {
-    if (onOpenNewPanel) onOpenNewPanel();
-  });
-  container.querySelector("#lm-quick-customize")?.addEventListener("click", () => {
-    state.customizingView = true;
-    document.getElementById("btn-customize-view")?.setAttribute("aria-pressed", "true");
-    document.getElementById("btn-customize-view")?.classList.add("btn-customize-active");
-    if (onRerender) onRerender();
-  });
 
   if (typeof onBindBanner === "function") {
     onBindBanner(container, layout);
@@ -239,21 +227,9 @@ export function renderManagedDashboard({
     if (onRerender) onRerender();
   });
 
-  if (!customizing) return;
-
-  // Customize banner handlers
+  // Utility bar handlers
   container.querySelector("#lm-new-panel")?.addEventListener("click", () => {
     if (onOpenNewPanel) onOpenNewPanel();
-  });
-
-  container.querySelector("#lm-done-customize")?.addEventListener("click", () => {
-    state.customizingView = false;
-    const topBtn = document.getElementById("btn-customize-view");
-    if (topBtn) {
-      topBtn.setAttribute("aria-pressed", "false");
-      topBtn.classList.remove("btn-customize-active");
-    }
-    if (onRerender) onRerender();
   });
 
   container.querySelector("#lm-reset-layout")?.addEventListener("click", async () => {
@@ -368,12 +344,23 @@ export function renderManagedDashboard({
       btn.dataset.span = String(next);
       btn.textContent = next === 2 ? "100% → 50%" : "50% → 100%";
       layout.panel_spans[pid] = next;
+      window.dispatchEvent(new Event("resize"));
       announceReorder(
         isEs
           ? `${pObj?.title || pid} ajustado al ${next === 2 ? "100%" : "50%"} de ancho`
           : `${pObj?.title || pid} resized to ${next === 2 ? "100%" : "50%"} width`
       );
       await saveTabLayout(proj, tabKey, layout);
+    });
+
+    panelEl.addEventListener("focusin", (e) => {
+      if (
+        e.target instanceof HTMLElement &&
+        e.target.matches(":focus-visible") &&
+        !(panelEl.getAnimations?.().length > 0)
+      ) {
+        panelEl.scrollIntoView({ block: "nearest", inline: "nearest" });
+      }
     });
 
     panelEl.querySelector(".lm-hide-panel")?.addEventListener("click", async () => {
@@ -569,6 +556,12 @@ export function renderManagedDashboard({
     handle.addEventListener("pointercancel", (e) => {
       if (e.pointerId !== activePointerId) return;
       cleanupDrag();
+    });
+
+    handle.addEventListener("lostpointercapture", () => {
+      if (activePointerId !== null) {
+        cleanupDrag();
+      }
     });
   });
 }

@@ -339,3 +339,61 @@ def test_global_settings_crud_inheritance_and_bulk_apply(client: TestClient) -> 
     assert reset_cfg["theme"] == "dark"
     assert reset_cfg["default_exchange_rate"] == "1"
 
+
+def test_ui_topbar_sidebar_and_extended_layouts(client: TestClient) -> None:
+    r_index = client.get("/")
+    assert r_index.status_code == 200
+    html = r_index.text
+    # Style preset selector and customize toggle button are removed from topbar
+    assert 'id="style-preset-select"' not in html
+    assert 'id="btn-customize-view"' not in html
+    # Collapsible sidebar controls and active view breadcrumb badge exist
+    assert 'id="btn-sidebar-toggle"' in html
+    assert 'id="btn-sidebar-collapse-footer"' in html
+    assert 'id="crumb-active-view"' in html
+
+    # Verify layouts persistence across Data Studio and all 3 AI & ML Studio subtabs
+    r_create = client.post("/api/v1/projects", json={"name": "Layouts Everywhere", "currency": "USD"})
+    assert r_create.status_code == 201
+    pid = r_create.json()["id"]
+
+    layouts_payload = {
+        "layouts": {
+            "data_studio": {
+                "panel_order": ["ds_mapping", "ds_sources", "ds_health", "ds_explorer"],
+                "hidden_panels": ["ds_health"],
+                "panel_spans": {"ds_sources": 2},
+                "kpi_order": [],
+                "hidden_kpis": [],
+            },
+            "ai_ml": {
+                "panel_order": ["ml_whatif", "ml_automl_forecast"],
+                "hidden_panels": [],
+                "panel_spans": {"ml_whatif": 2},
+                "kpi_order": [],
+                "hidden_kpis": [],
+            },
+            "ai_ml_documents": {
+                "panel_order": ["ai_doc_rag", "ai_doc_ocr", "ai_doc_library"],
+                "hidden_panels": [],
+                "panel_spans": {"ai_doc_rag": 2},
+                "kpi_order": [],
+                "hidden_kpis": [],
+            },
+            "ai_ml_market": {
+                "panel_order": ["ai_mkt_churn", "ai_mkt_sentiment", "ai_mkt_alerts"],
+                "hidden_panels": ["ai_mkt_entities"],
+                "panel_spans": {"ai_mkt_sentiment": 2},
+                "kpi_order": [],
+                "hidden_kpis": [],
+            },
+        }
+    }
+    r_patch = client.patch(f"/api/v1/projects/{pid}", json={"settings": layouts_payload})
+    assert r_patch.status_code == 200
+    saved_layouts = r_patch.json()["settings"]["layouts"]
+    assert saved_layouts["data_studio"]["panel_order"][0] == "ds_mapping"
+    assert saved_layouts["ai_ml_documents"]["panel_order"][0] == "ai_doc_rag"
+    assert saved_layouts["ai_ml_market"]["hidden_panels"] == ["ai_mkt_entities"]
+
+

@@ -6,7 +6,14 @@ import {
   renderCustomPanelShell,
 } from "../custom_panels.js";
 import { fmtCurrency, fmtNumber, fmtPercent, t } from "../i18n.js";
-import { getTabLayout, renderManagedDashboard, saveTabLayout } from "../layout_manager.js";
+import {
+  animateFlip,
+  announceReorder,
+  getTabLayout,
+  moveNodeBefore,
+  renderManagedDashboard,
+  saveTabLayout,
+} from "../layout_manager.js";
 import { ensureProjectSettings, state, toggleCrossFilter } from "../state.js";
 import { escapeHtml, showToast } from "./hub.js";
 
@@ -48,7 +55,7 @@ export async function renderOverview(container) {
   const [ov, insRes, customRes] = await Promise.all([
     api.analytics(proj.id, "overview", state.filters),
     api.analytics(proj.id, "insights", state.filters),
-    customSpecs.length || state.customizingView
+    customSpecs.length
       ? api.analytics(proj.id, "custom-panels", { filters: state.filters })
       : Promise.resolve({ panels: {}, available_columns: [] }),
   ]);
@@ -68,9 +75,8 @@ export async function renderOverview(container) {
   const visibleKpis = orderedKpiKeys.filter((k) => !hiddenKpiSet.has(k));
   const hiddenKpis = orderedKpiKeys.filter((k) => hiddenKpiSet.has(k));
 
-  const extraKpiRestoreHtml =
-    state.customizingView && hiddenKpis.length
-      ? `
+  const extraKpiRestoreHtml = hiddenKpis.length
+    ? `
       <div class="customize-restore-row">
         <span class="toolbar-label">${t(lang, "hidden_kpis")}</span>
         <div class="chips-row">
@@ -82,7 +88,7 @@ export async function renderOverview(container) {
             .join("")}
         </div>
       </div>`
-      : "";
+    : "";
 
   const openBuilder = (existingSpec = null) =>
     openCustomPanelModal({
@@ -134,13 +140,12 @@ export async function renderOverview(container) {
                 deltaBadge = `<span class="delta-badge ${isGood ? "delta-pos" : "delta-neg"}"><span aria-hidden="true">${arrow}</span> ${formattedDelta}</span>`;
               }
               const exactTitle = formatKpiTitle(k, item.value, proj.currency, lang);
-              const kpiTools = state.customizingView
-                ? `<div class="kpi-mini-tools">
-                     <button type="button" class="btn btn-ghost btn-xs ov-kpi-left" data-kpi="${escapeHtml(k)}" ${idx === 0 ? "disabled" : ""} aria-label="Move KPI left">←</button>
-                     <button type="button" class="btn btn-ghost btn-xs ov-kpi-right" data-kpi="${escapeHtml(k)}" ${idx === visibleKpis.length - 1 ? "disabled" : ""} aria-label="Move KPI right">→</button>
-                     <button type="button" class="btn btn-ghost btn-xs ov-kpi-hide" data-kpi="${escapeHtml(k)}" aria-label="Hide KPI">✕</button>
-                   </div>`
-                : "";
+              const kpiTools = `<div class="kpi-mini-tools">
+                <button type="button" class="panel-drag-handle kpi-drag-handle" data-kpi="${escapeHtml(k)}" aria-pressed="false" title="${escapeHtml((isEs ? "Arrastrar KPI " : "Drag KPI ") + t(lang, k))}" aria-label="${escapeHtml((isEs ? "Reordenar KPI " : "Reorder KPI ") + t(lang, k))}">⠿</button>
+                <button type="button" class="btn btn-ghost btn-xs ov-kpi-left" data-kpi="${escapeHtml(k)}" ${idx === 0 ? "disabled" : ""} aria-label="Move KPI left">←</button>
+                <button type="button" class="btn btn-ghost btn-xs ov-kpi-right" data-kpi="${escapeHtml(k)}" ${idx === visibleKpis.length - 1 ? "disabled" : ""} aria-label="Move KPI right">→</button>
+                <button type="button" class="btn btn-ghost btn-xs ov-kpi-hide" data-kpi="${escapeHtml(k)}" aria-label="Hide KPI">✕</button>
+              </div>`;
               return `
               <div class="kpi-card" data-kpi-key="${escapeHtml(k)}">
                 <div class="kpi-head-row">
@@ -165,35 +170,217 @@ export async function renderOverview(container) {
           mountSparkline(panelEl.querySelector(`#spark-${k}`), kpis[k].sparkline, isGood);
         }
       }
-      if (state.customizingView) {
-        const moveKpi = async (key, dir) => {
-          const cur = [...visibleKpis];
-          const i = cur.indexOf(key);
-          const j = i + dir;
-          if (i < 0 || j < 0 || j >= cur.length) return;
-          [cur[i], cur[j]] = [cur[j], cur[i]];
+
+      const kpiGridEl = panelEl.querySelector(".grid-kpis");
+      if (!kpiGridEl) return;
+
+      const syncKpiButtons = () => {
+        const cards = Array.from(kpiGridEl.querySelectorAll(":scope > .kpi-card"));
+        cards.forEach((card, idx) => {
+          const leftBtn = card.querySelector(".ov-kpi-left");
+          const rightBtn = card.querySelector(".ov-kpi-right");
+          if (leftBtn) leftBtn.disabled = idx === 0;
+          if (rightBtn) rightBtn.disabled = idx === cards.length - 1;
+        });
+      };
+
+      const persistKpiDomOrder = async (movedKey = null) => {
+        const domKeys = Array.from(kpiGridEl.querySelectorAll(":scope > .kpi-card")).map(
+          (el) => el.dataset.kpiKey
+        );
+        syncKpiButtons();
+        const nextL = getTabLayout(proj, "overview");
+        nextL.kpi_order = [...domKeys, ...hiddenKpis];
+        if (movedKey) {
+          const pos = domKeys.indexOf(movedKey);
+          announceReorder(
+            isEs
+              ? `${t(lang, movedKey)} movido a la posición ${pos + 1} de ${domKeys.length}`
+              : `${t(lang, movedKey)} moved to position ${pos + 1} of ${domKeys.length}`
+          );
+        }
+        await saveTabLayout(proj, "overview", nextL);
+      };
+
+      const swapKpiCard = (cardEl, dir, focusSel = null) => {
+        const cards = Array.from(kpiGridEl.querySelectorAll(":scope > .kpi-card"));
+        const i = cards.indexOf(cardEl);
+        const j = i + dir;
+        if (i < 0 || j < 0 || j >= cards.length) return false;
+        const oldRects = new Map(cards.map((el) => [el, el.getBoundingClientRect()]));
+        const refNode = dir < 0 ? cards[j] : cards[j].nextElementSibling;
+        moveNodeBefore(kpiGridEl, cardEl, refNode);
+        animateFlip(cards, oldRects);
+        if (focusSel) {
+          cardEl.querySelector(focusSel)?.focus({ preventScroll: true });
+        }
+        persistKpiDomOrder(cardEl.dataset.kpiKey);
+        return true;
+      };
+
+      kpiGridEl.querySelectorAll(":scope > .kpi-card").forEach((cardEl) => {
+        const kKey = cardEl.dataset.kpiKey;
+        cardEl.querySelector(".ov-kpi-left")?.addEventListener("click", () => {
+          const moved = swapKpiCard(cardEl, -1, ".ov-kpi-left");
+          if (moved && cardEl.querySelector(".ov-kpi-left")?.disabled) {
+            cardEl.querySelector(".ov-kpi-right")?.focus({ preventScroll: true });
+          }
+        });
+        cardEl.querySelector(".ov-kpi-right")?.addEventListener("click", () => {
+          const moved = swapKpiCard(cardEl, 1, ".ov-kpi-right");
+          if (moved && cardEl.querySelector(".ov-kpi-right")?.disabled) {
+            cardEl.querySelector(".ov-kpi-left")?.focus({ preventScroll: true });
+          }
+        });
+        cardEl.querySelector(".ov-kpi-hide")?.addEventListener("click", async () => {
           const nextL = getTabLayout(proj, "overview");
-          nextL.kpi_order = [...cur, ...hiddenKpis];
+          if (!nextL.hidden_kpis.includes(kKey)) {
+            nextL.hidden_kpis.push(kKey);
+          }
           await saveTabLayout(proj, "overview", nextL);
           await renderOverview(container);
+        });
+
+        const handle = cardEl.querySelector(".kpi-drag-handle");
+        if (!handle) return;
+
+        let kbdGrabbed = false;
+        let origNext = null;
+        let ignoreKbdBlur = false;
+
+        const setKpiGrabbed = (grabbed) => {
+          kbdGrabbed = grabbed;
+          handle.setAttribute("aria-pressed", String(grabbed));
+          cardEl.classList.toggle("is-grabbed", grabbed);
         };
-        panelEl.querySelectorAll(".ov-kpi-left").forEach((b) =>
-          b.addEventListener("click", () => moveKpi(b.dataset.kpi, -1))
-        );
-        panelEl.querySelectorAll(".ov-kpi-right").forEach((b) =>
-          b.addEventListener("click", () => moveKpi(b.dataset.kpi, 1))
-        );
-        panelEl.querySelectorAll(".ov-kpi-hide").forEach((b) =>
-          b.addEventListener("click", async () => {
-            const nextL = getTabLayout(proj, "overview");
-            if (!nextL.hidden_kpis.includes(b.dataset.kpi)) {
-              nextL.hidden_kpis.push(b.dataset.kpi);
+
+        handle.addEventListener("keydown", (e) => {
+          if (e.key === " " || e.key === "Enter") {
+            e.preventDefault();
+            if (!kbdGrabbed) {
+              origNext = cardEl.nextElementSibling;
+              setKpiGrabbed(true);
+              announceReorder(
+                isEs
+                  ? `${t(lang, kKey)} seleccionado. Usa flechas para mover, Espacio para soltar o Escape para cancelar.`
+                  : `${t(lang, kKey)} grabbed. Use arrow keys to move, Space to drop, or Escape to cancel.`
+              );
+            } else {
+              setKpiGrabbed(false);
+              announceReorder(isEs ? `${t(lang, kKey)} soltado.` : `${t(lang, kKey)} dropped.`);
             }
-            await saveTabLayout(proj, "overview", nextL);
-            await renderOverview(container);
-          })
-        );
-      }
+            return;
+          }
+          if (!kbdGrabbed) return;
+          if (e.key === "Escape") {
+            e.preventDefault();
+            ignoreKbdBlur = true;
+            moveNodeBefore(kpiGridEl, cardEl, origNext);
+            handle.focus({ preventScroll: true });
+            ignoreKbdBlur = false;
+            setKpiGrabbed(false);
+            persistKpiDomOrder();
+            announceReorder(isEs ? "Movimiento cancelado" : "Reorder cancelled");
+            return;
+          }
+          if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+            e.preventDefault();
+            ignoreKbdBlur = true;
+            swapKpiCard(cardEl, -1, ".kpi-drag-handle");
+            ignoreKbdBlur = false;
+          } else if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+            e.preventDefault();
+            ignoreKbdBlur = true;
+            swapKpiCard(cardEl, 1, ".kpi-drag-handle");
+            ignoreKbdBlur = false;
+          }
+        });
+
+        handle.addEventListener("blur", () => {
+          if (kbdGrabbed && !ignoreKbdBlur) {
+            setKpiGrabbed(false);
+          }
+        });
+
+        let activePointerId = null;
+        let startX = 0;
+        let startY = 0;
+        let targetRefNode = undefined;
+
+        const clearKpiDropMarkers = () => {
+          kpiGridEl.querySelectorAll(".drop-target-before, .drop-target-after").forEach((el) => {
+            el.classList.remove("drop-target-before", "drop-target-after");
+          });
+        };
+
+        const cleanupKpiDrag = () => {
+          activePointerId = null;
+          targetRefNode = undefined;
+          document.documentElement.classList.remove("is-dragging-panel");
+          cardEl.classList.remove("is-dragging");
+          cardEl.style.translate = "";
+          clearKpiDropMarkers();
+        };
+
+        handle.addEventListener("pointerdown", (e) => {
+          if (e.button !== 0 || activePointerId !== null) return;
+          e.preventDefault();
+          activePointerId = e.pointerId;
+          startX = e.clientX;
+          startY = e.clientY;
+          targetRefNode = undefined;
+          handle.setPointerCapture(e.pointerId);
+          document.documentElement.classList.add("is-dragging-panel");
+          cardEl.classList.add("is-dragging");
+        });
+
+        handle.addEventListener("pointermove", (e) => {
+          if (e.pointerId !== activePointerId) return;
+          cardEl.style.translate = `${e.clientX - startX}px ${e.clientY - startY}px`;
+          clearKpiDropMarkers();
+          const siblings = Array.from(kpiGridEl.querySelectorAll(":scope > .kpi-card")).filter(
+            (el) => el !== cardEl
+          );
+          if (!siblings.length) return;
+          let foundRef = null;
+          for (const sib of siblings) {
+            const r = sib.getBoundingClientRect();
+            const midY = r.top + r.height / 2;
+            const midX = r.left + r.width / 2;
+            const sameRow = e.clientY >= r.top && e.clientY <= r.bottom;
+            if (e.clientY < midY - r.height * 0.25 || (sameRow && e.clientX < midX)) {
+              foundRef = sib;
+              break;
+            }
+          }
+          targetRefNode = foundRef;
+          if (foundRef && foundRef !== cardEl.nextElementSibling) {
+            foundRef.classList.add("drop-target-before");
+          } else if (!foundRef && cardEl.nextElementSibling !== null) {
+            siblings[siblings.length - 1].classList.add("drop-target-after");
+          }
+        });
+
+        handle.addEventListener("pointerup", (e) => {
+          if (e.pointerId !== activePointerId) return;
+          const shouldMove =
+            targetRefNode !== undefined && targetRefNode !== cardEl.nextElementSibling;
+          const refToApply = targetRefNode;
+          const allCards = Array.from(kpiGridEl.querySelectorAll(":scope > .kpi-card"));
+          cardEl.style.translate = "";
+          const oldRects = new Map(allCards.map((el) => [el, el.getBoundingClientRect()]));
+          cleanupKpiDrag();
+          if (shouldMove) {
+            moveNodeBefore(kpiGridEl, cardEl, refToApply);
+            animateFlip(allCards, oldRects);
+            handle.focus({ preventScroll: true });
+            persistKpiDomOrder(kKey);
+          }
+        });
+
+        handle.addEventListener("pointercancel", cleanupKpiDrag);
+        handle.addEventListener("lostpointercapture", cleanupKpiDrag);
+      });
     },
   });
 
@@ -404,19 +591,12 @@ export async function renderOverview(container) {
       onEdit: () => openBuilder(spec),
       onDelete: () => deleteCustomSpec(spec.id),
       renderHtml: () => {
-        const quickActions = !state.customizingView
-          ? `<div class="custom-panel-inline-tools">
-               <button type="button" class="btn btn-ghost btn-xs cp-quick-edit" title="${escapeHtml(t(lang, "edit_panel"))}" aria-label="${escapeHtml(t(lang, "edit_panel"))}">✎</button>
-               <button type="button" class="btn btn-ghost btn-xs cp-quick-del" title="${escapeHtml(t(lang, "delete_panel"))}" aria-label="${escapeHtml(t(lang, "delete_panel"))}">✕</button>
-             </div>`
-          : "";
         if (spec.panel_type === "kpi") {
           const subtitle = `${spec.aggregation.toUpperCase()}${spec.y_column ? `(${spec.y_column})` : ""}`;
           return `
             <div class="card custom-kpi-panel" id="cp-body-${escapeHtml(spec.id)}">
               <div class="kpi-head-row">
                 <div class="kpi-label">${escapeHtml(spec.title)}</div>
-                ${quickActions}
               </div>
               <div class="kpi-value tabular" data-cp-kpi-val>—</div>
               <div class="kpi-footer">
@@ -425,15 +605,10 @@ export async function renderOverview(container) {
               </div>
             </div>`;
         }
-        return renderCustomPanelShell(spec).replace(
-          `</div>\n      <div id="cp-viz-`,
-          `${quickActions}</div>\n      <div id="cp-viz-`
-        );
+        return renderCustomPanelShell(spec);
       },
       mount: (panelEl) => {
         mountCustomPanelVisual(panelEl, spec, customPayloads[spec.id], proj, lang, true);
-        panelEl.querySelector(".cp-quick-edit")?.addEventListener("click", () => openBuilder(spec));
-        panelEl.querySelector(".cp-quick-del")?.addEventListener("click", () => deleteCustomSpec(spec.id));
       },
     });
   }

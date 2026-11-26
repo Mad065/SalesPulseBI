@@ -566,240 +566,265 @@ async function renderDocumentsTab(container, proj, lang) {
     docs = [];
   }
 
-  container.innerHTML = `
-    <div class="grid-2">
-      <div class="card">
-        <div class="card-header">
-          <div>
-            <h3 class="card-title">${isEs ? "Extracción Estructurada (OCR + Pydantic)" : "Structured Extraction (OCR + Pydantic)"}</h3>
-            <p class="card-subtitle">${
-              isEs
-                ? "Sube facturas, estados de cuenta o reportes (.pdf/.txt) con auditoría matemática Decimal e ingesta 1-clic."
-                : "Upload invoices, bank statements, or reports (.pdf/.txt) with exact Decimal audit and 1-click dataset ingest."
-            }</p>
-          </div>
-        </div>
-        <div class="settings-section-box" style="margin:var(--space-3);">
-          <div class="form-grid-3">
-            <div class="form-field">
-              <label class="form-label" for="doc-ocr-type">${isEs ? "Tipo de documento" : "Document Type"}</label>
-              <select id="doc-ocr-type" class="input full-width">
-                <option value="auto">${isEs ? "Auto-detectar" : "Auto-detect"}</option>
-                <option value="invoice">${isEs ? "Factura (Invoice)" : "Invoice"}</option>
-                <option value="bank_statement">${isEs ? "Estado de Cuenta" : "Bank Statement"}</option>
-                <option value="financial_report">${isEs ? "Reporte Trimestral / 10-K" : "Financial Report / 10-K"}</option>
-              </select>
-            </div>
-            <div class="form-field">
-              <label class="form-label" for="doc-ocr-file">${isEs ? "Archivo (.pdf, .txt, .md)" : "File (.pdf, .txt, .md)"}</label>
-              <input id="doc-ocr-file" type="file" accept=".pdf,.txt,.md" class="input input-sm full-width" />
-            </div>
-            <div class="form-field" style="align-self:end;">
-              <button type="button" id="doc-ocr-run" class="btn btn-primary btn-sm full-width">
-                ${isEs ? "Extraer y Auditar" : "Extract & Audit"}
-              </button>
+  const panels = [
+    {
+      id: "ai_doc_ocr",
+      title: t(lang, "doc_ocr_title"),
+      defaultSpan: 1,
+      renderHtml: () => `
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <h3 class="card-title">${t(lang, "doc_ocr_title")}</h3>
+              <p class="card-subtitle">${
+                isEs
+                  ? "Sube facturas, estados de cuenta o reportes (.pdf/.txt) con auditoría matemática Decimal e ingesta 1-clic."
+                  : "Upload invoices, bank statements, or reports (.pdf/.txt) with exact Decimal audit and 1-click dataset ingest."
+              }</p>
             </div>
           </div>
-          <div id="doc-ocr-preview" class="fx-preview-banner hidden" style="margin-block-start:var(--space-2);"></div>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card-header">
-          <div>
-            <h3 class="card-title">${isEs ? "RAG Financiero Local (DuckDB Híbrido)" : "Local Financial RAG (DuckDB Hybrid)"}</h3>
-            <p class="card-subtitle">${
-              isEs
-                ? "Indexa balances, 10-K o políticas de gasto y pregunta con citas exactas por página."
-                : "Index balance sheets, 10-Ks, or expense policies and ask questions with exact page citations."
-            }</p>
-          </div>
-        </div>
-        <div class="settings-section-box" style="margin:var(--space-3);">
-          <div class="form-grid-3">
-            <div class="form-field">
-              <label class="form-label" for="rag-file">${isEs ? "Documento para RAG" : "Document for RAG"}</label>
-              <input id="rag-file" type="file" accept=".pdf,.txt,.md" class="input input-sm full-width" />
+          <div class="settings-section-box" style="margin:var(--space-3);">
+            <div class="form-grid-3">
+              <div class="form-field">
+                <label class="form-label" for="doc-ocr-type">${isEs ? "Tipo de documento" : "Document Type"}</label>
+                <select id="doc-ocr-type" class="input full-width">
+                  <option value="auto">${isEs ? "Auto-detectar" : "Auto-detect"}</option>
+                  <option value="invoice">${isEs ? "Factura (Invoice)" : "Invoice"}</option>
+                  <option value="bank_statement">${isEs ? "Estado de Cuenta" : "Bank Statement"}</option>
+                  <option value="financial_report">${isEs ? "Reporte Trimestral / 10-K" : "Financial Report / 10-K"}</option>
+                </select>
+              </div>
+              <div class="form-field">
+                <label class="form-label" for="doc-ocr-file">${isEs ? "Archivo (.pdf, .txt, .md)" : "File (.pdf, .txt, .md)"}</label>
+                <input id="doc-ocr-file" type="file" accept=".pdf,.txt,.md" class="input input-sm full-width" />
+              </div>
+              <div class="form-field" style="align-self:end;">
+                <button type="button" id="doc-ocr-run" class="btn btn-primary btn-sm full-width">
+                  ${isEs ? "Extraer y Auditar" : "Extract & Audit"}
+                </button>
+              </div>
             </div>
-            <div class="form-field">
-              <label class="form-label" for="rag-asof">${isEs ? "Fecha corte (As-Of)" : "As-Of Date"}</label>
-              <input id="rag-asof" type="date" class="input input-sm full-width" />
-            </div>
-            <div class="form-field" style="align-self:end;">
-              <button type="button" id="rag-index-btn" class="btn btn-secondary btn-sm full-width">
-                ${isEs ? "Indexar en RAG" : "Index in RAG"}
-              </button>
+            <div id="doc-ocr-preview" class="fx-preview-banner hidden" style="margin-block-start:var(--space-2);"></div>
+          </div>
+        </div>`,
+      mount: (panelEl) => {
+        panelEl.querySelector("#doc-ocr-run")?.addEventListener("click", async () => {
+          const fileInput = panelEl.querySelector("#doc-ocr-file");
+          const file = fileInput?.files?.[0];
+          if (!file) return showToast(isEs ? "Selecciona un archivo PDF o TXT" : "Select a PDF or TXT file", "error");
+          try {
+            const res = await api.extractDocument(proj.id, file, panelEl.querySelector("#doc-ocr-type").value);
+            const box = panelEl.querySelector("#doc-ocr-preview");
+            box.classList.remove("hidden");
+            box.innerHTML = `
+              <strong>${res.accounting_valid ? "✓ Cuadre Decimal exacto" : "⚠ Revisar discrepancias contables"}</strong>
+              (${escapeHtml(res.extraction_mode)} · ${escapeHtml(res.reader_engine)})
+              <pre style="margin-block-start:0.4rem;max-block-size:12rem;overflow:auto;">${escapeHtml(JSON.stringify(res.document.extracted, null, 2))}</pre>
+            `;
+            showToast(isEs ? "Documento extraído y auditado" : "Document extracted and audited", "success");
+            await renderDocumentsTab(container, proj, lang);
+          } catch (err) {
+            showToast(err.message, "error");
+          }
+        });
+      },
+    },
+    {
+      id: "ai_doc_rag",
+      title: t(lang, "doc_rag_title"),
+      defaultSpan: 1,
+      renderHtml: () => `
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <h3 class="card-title">${t(lang, "doc_rag_title")}</h3>
+              <p class="card-subtitle">${
+                isEs
+                  ? "Indexa balances, 10-K o políticas de gasto y pregunta con citas exactas por página."
+                  : "Index balance sheets, 10-Ks, or expense policies and ask questions with exact page citations."
+              }</p>
             </div>
           </div>
-          <div class="copilot-composer-row" style="margin-block-start:var(--space-2);">
-            <input id="rag-question" type="text" class="input input-sm full-width" placeholder="${
-              isEs ? "Ej. ¿Cuál fue el flujo de caja libre o política de viáticos?" : "e.g. What was free cash flow or travel expense policy?"
-            }" />
-            <button type="button" id="rag-ask-btn" class="btn btn-primary btn-sm">${isEs ? "Preguntar" : "Ask"}</button>
+          <div class="settings-section-box" style="margin:var(--space-3);">
+            <div class="form-grid-3">
+              <div class="form-field">
+                <label class="form-label" for="rag-file">${isEs ? "Documento para RAG" : "Document for RAG"}</label>
+                <input id="rag-file" type="file" accept=".pdf,.txt,.md" class="input input-sm full-width" />
+              </div>
+              <div class="form-field">
+                <label class="form-label" for="rag-asof">${isEs ? "Fecha corte (As-Of)" : "As-Of Date"}</label>
+                <input id="rag-asof" type="date" class="input input-sm full-width" />
+              </div>
+              <div class="form-field" style="align-self:end;">
+                <button type="button" id="rag-index-btn" class="btn btn-secondary btn-sm full-width">
+                  ${isEs ? "Indexar en RAG" : "Index in RAG"}
+                </button>
+              </div>
+            </div>
+            <div class="copilot-composer-row" style="margin-block-start:var(--space-2);">
+              <input id="rag-question" type="text" class="input input-sm full-width" placeholder="${
+                isEs ? "Ej. ¿Cuál fue el flujo de caja libre o política de viáticos?" : "e.g. What was free cash flow or travel expense policy?"
+              }" />
+              <button type="button" id="rag-ask-btn" class="btn btn-primary btn-sm">${isEs ? "Preguntar" : "Ask"}</button>
+            </div>
+            <div id="rag-answer-box" class="fx-preview-banner hidden" style="margin-block-start:var(--space-2);"></div>
           </div>
-          <div id="rag-answer-box" class="fx-preview-banner hidden" style="margin-block-start:var(--space-2);"></div>
-        </div>
-      </div>
-    </div>
+        </div>`,
+      mount: (panelEl) => {
+        panelEl.querySelector("#rag-index-btn")?.addEventListener("click", async () => {
+          const file = panelEl.querySelector("#rag-file")?.files?.[0];
+          if (!file) return showToast(isEs ? "Selecciona un archivo para indexar" : "Select a file to index", "error");
+          try {
+            const res = await api.indexDocument(proj.id, file, {
+              as_of_date: panelEl.querySelector("#rag-asof")?.value || undefined,
+              currency: proj.currency,
+            });
+            showToast(
+              isEs ? `Indexados ${res.chunks_indexed} fragmentos en DuckDB RAG` : `Indexed ${res.chunks_indexed} chunks into DuckDB RAG`,
+              "success"
+            );
+            await renderDocumentsTab(container, proj, lang);
+          } catch (err) {
+            showToast(err.message, "error");
+          }
+        });
 
-    <div class="card" style="margin-block-start:var(--space-4);">
-      <div class="card-header">
-        <div>
-          <h3 class="card-title">${isEs ? "Biblioteca Documental y Conciliación Contable" : "Document Library & Smart Reconciliation"}</h3>
-          <p class="card-subtitle">${isEs ? "Cruza facturas/estados de cuenta extraídos contra tus ventas en Parquet." : "Cross-check extracted invoices/statements against your Parquet sales."}</p>
-        </div>
-        <button type="button" id="doc-reconcile-btn" class="btn btn-secondary btn-sm">
-          ⇄ ${isEs ? "Conciliar vs. Ventas" : "Reconcile vs. Sales"}
-        </button>
-      </div>
-      <div id="doc-reconcile-result" class="hidden" style="padding-inline:var(--space-4);padding-block-end:var(--space-3);"></div>
-      <div class="table-wrap" tabindex="0" role="region" aria-label="Project documents">
-        ${
-          docs.length
-            ? `<table class="data-table">
-                <thead>
-                  <tr>
-                    <th>${isEs ? "Archivo" : "Filename"}</th>
-                    <th>${isEs ? "Tipo" : "Type"}</th>
-                    <th>${isEs ? "Estado" : "Status"}</th>
-                    <th class="num">${isEs ? "Páginas" : "Pages"}</th>
-                    <th>RAG</th>
-                    <th>${isEs ? "Acciones" : "Actions"}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${docs
-                    .map(
-                      (d) => `
-                    <tr>
-                      <td><strong>${escapeHtml(d.filename)}</strong></td>
-                      <td><span class="pill pill-muted">${escapeHtml(d.doc_type)}</span></td>
-                      <td><span class="pill ${d.validation_errors?.length ? "pill-amber" : "pill-emerald"}">${escapeHtml(d.status)}</span></td>
-                      <td class="num">${fmtNumber(d.page_count, 0, lang)}</td>
-                      <td>${d.indexed_in_rag ? '<span class="pill pill-accent">✓ Indexado</span>' : "—"}</td>
-                      <td>
-                        <div class="card-toolbar">
-                          ${
-                            (d.doc_type === "invoice" || d.doc_type === "bank_statement") && !d.ingested_to_dataset
-                              ? `<button type="button" class="btn btn-primary btn-xs" data-doc-commit="${escapeHtml(d.id)}">${isEs ? "Ingestar" : "Commit"}</button>`
-                              : ""
-                          }
-                          <button type="button" class="btn btn-ghost btn-xs" data-doc-del="${escapeHtml(d.id)}">✕</button>
-                        </div>
-                      </td>
-                    </tr>`
-                    )
-                    .join("")}
-                </tbody>
-              </table>`
-            : `<div class="card-subtitle" style="padding:1.125rem;">${isEs ? "Aún no hay documentos en este proyecto." : "No documents uploaded to this project yet."}</div>`
-        }
-      </div>
-    </div>
-  `;
+        panelEl.querySelector("#rag-ask-btn")?.addEventListener("click", async () => {
+          const q = panelEl.querySelector("#rag-question")?.value.trim();
+          if (!q) return;
+          const box = panelEl.querySelector("#rag-answer-box");
+          box.classList.remove("hidden");
+          box.textContent = isEs ? "Buscando citas exactas..." : "Searching exact citations...";
+          try {
+            const res = await api.askDocuments(proj.id, {
+              question: q,
+              filters: state.filters,
+              lang,
+            });
+            const cites = (res.citations || [])
+              .map((c) => `<span class="pill pill-accent">${escapeHtml(c.label)}</span>`)
+              .join(" ");
+            box.innerHTML = `
+              <div style="white-space:pre-wrap;">${escapeHtml(res.answer_markdown)}</div>
+              <div style="margin-block-start:0.5rem;">${cites}</div>
+            `;
+          } catch (err) {
+            box.textContent = err.message;
+          }
+        });
+      },
+    },
+    {
+      id: "ai_doc_library",
+      title: t(lang, "doc_library_title"),
+      defaultSpan: 2,
+      renderHtml: () => `
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <h3 class="card-title">${t(lang, "doc_library_title")}</h3>
+              <p class="card-subtitle">${isEs ? "Cruza facturas/estados de cuenta extraídos contra tus ventas en Parquet." : "Cross-check extracted invoices/statements against your Parquet sales."}</p>
+            </div>
+            <button type="button" id="doc-reconcile-btn" class="btn btn-secondary btn-sm">
+              ⇄ ${isEs ? "Conciliar vs. Ventas" : "Reconcile vs. Sales"}
+            </button>
+          </div>
+          <div id="doc-reconcile-result" class="hidden" style="padding-inline:var(--space-4);padding-block-end:var(--space-3);"></div>
+          <div class="table-wrap" tabindex="0" role="region" aria-label="Project documents">
+            ${
+              docs.length
+                ? `<table class="data-table">
+                    <thead>
+                      <tr>
+                        <th>${isEs ? "Archivo" : "Filename"}</th>
+                        <th>${isEs ? "Tipo" : "Type"}</th>
+                        <th>${isEs ? "Estado" : "Status"}</th>
+                        <th class="num">${isEs ? "Páginas" : "Pages"}</th>
+                        <th>RAG</th>
+                        <th>${isEs ? "Acciones" : "Actions"}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${docs
+                        .map(
+                          (d) => `
+                        <tr>
+                          <td><strong>${escapeHtml(d.filename)}</strong></td>
+                          <td><span class="pill pill-muted">${escapeHtml(d.doc_type)}</span></td>
+                          <td><span class="pill ${d.validation_errors?.length ? "pill-amber" : "pill-emerald"}">${escapeHtml(d.status)}</span></td>
+                          <td class="num">${fmtNumber(d.page_count, 0, lang)}</td>
+                          <td>${d.indexed_in_rag ? '<span class="pill pill-accent">✓ Indexado</span>' : "—"}</td>
+                          <td>
+                            <div class="card-toolbar">
+                              ${
+                                (d.doc_type === "invoice" || d.doc_type === "bank_statement") && !d.ingested_to_dataset
+                                  ? `<button type="button" class="btn btn-primary btn-xs" data-doc-commit="${escapeHtml(d.id)}">${isEs ? "Ingestar" : "Commit"}</button>`
+                                  : ""
+                              }
+                              <button type="button" class="btn btn-ghost btn-xs" data-doc-del="${escapeHtml(d.id)}">✕</button>
+                            </div>
+                          </td>
+                        </tr>`
+                        )
+                        .join("")}
+                    </tbody>
+                  </table>`
+                : `<div class="card-subtitle" style="padding:1.125rem;">${isEs ? "Aún no hay documentos en este proyecto." : "No documents uploaded to this project yet."}</div>`
+            }
+          </div>
+        </div>`,
+      mount: (panelEl) => {
+        panelEl.querySelector("#doc-reconcile-btn")?.addEventListener("click", async () => {
+          const box = panelEl.querySelector("#doc-reconcile-result");
+          try {
+            const res = await api.reconcileDocuments(proj.id, { date_tolerance_days: 3 });
+            box.classList.remove("hidden");
+            const s = res.summary || {};
+            box.innerHTML = `
+              <div class="fx-preview-banner tabular">
+                ${isEs ? "Conciliados" : "Matched"}: <strong>${s.matched || 0}</strong> (${fmtCurrency(s.matched_amount_decimal, proj.currency, lang)}) ·
+                ${isEs ? "Discrepancias" : "Mismatches"}: <strong>${s.amount_mismatch || 0}</strong> ·
+                ${isEs ? "Sin cruce" : "Unmatched"}: <strong>${s.unmatched || 0}</strong>
+              </div>`;
+          } catch (err) {
+            showToast(err.message, "error");
+          }
+        });
 
-  container.querySelector("#doc-ocr-run")?.addEventListener("click", async () => {
-    const fileInput = container.querySelector("#doc-ocr-file");
-    const file = fileInput?.files?.[0];
-    if (!file) return showToast(isEs ? "Selecciona un archivo PDF o TXT" : "Select a PDF or TXT file", "error");
-    try {
-      const res = await api.extractDocument(proj.id, file, container.querySelector("#doc-ocr-type").value);
-      const box = container.querySelector("#doc-ocr-preview");
-      box.classList.remove("hidden");
-      box.innerHTML = `
-        <strong>${res.accounting_valid ? "✓ Cuadre Decimal exacto" : "⚠ Revisar discrepancias contables"}</strong>
-        (${escapeHtml(res.extraction_mode)} · ${escapeHtml(res.reader_engine)})
-        <pre style="margin-block-start:0.4rem;max-block-size:12rem;overflow:auto;">${escapeHtml(JSON.stringify(res.document.extracted, null, 2))}</pre>
-      `;
-      showToast(isEs ? "Documento extraído y auditado" : "Document extracted and audited", "success");
-      await renderDocumentsTab(container, proj, lang);
-    } catch (err) {
-      showToast(err.message, "error");
-    }
-  });
-
-  container.querySelector("#rag-index-btn")?.addEventListener("click", async () => {
-    const file = container.querySelector("#rag-file")?.files?.[0];
-    if (!file) return showToast(isEs ? "Selecciona un archivo para indexar" : "Select a file to index", "error");
-    try {
-      const res = await api.indexDocument(proj.id, file, {
-        as_of_date: container.querySelector("#rag-asof")?.value || undefined,
-        currency: proj.currency,
-      });
-      showToast(
-        isEs ? `Indexados ${res.chunks_indexed} fragmentos en DuckDB RAG` : `Indexed ${res.chunks_indexed} chunks into DuckDB RAG`,
-        "success"
-      );
-      await renderDocumentsTab(container, proj, lang);
-    } catch (err) {
-      showToast(err.message, "error");
-    }
-  });
-
-  container.querySelector("#rag-ask-btn")?.addEventListener("click", async () => {
-    const q = container.querySelector("#rag-question")?.value.trim();
-    if (!q) return;
-    const box = container.querySelector("#rag-answer-box");
-    box.classList.remove("hidden");
-    box.textContent = isEs ? "Buscando citas exactas..." : "Searching exact citations...";
-    try {
-      const res = await api.askDocuments(proj.id, {
-        question: q,
-        filters: state.filters,
-        lang,
-      });
-      const cites = (res.citations || [])
-        .map((c) => `<span class="pill pill-accent">${escapeHtml(c.label)}</span>`)
-        .join(" ");
-      box.innerHTML = `
-        <div style="white-space:pre-wrap;">${escapeHtml(res.answer_markdown)}</div>
-        <div style="margin-block-start:0.5rem;">${cites}</div>
-      `;
-    } catch (err) {
-      box.textContent = err.message;
-    }
-  });
-
-  container.querySelector("#doc-reconcile-btn")?.addEventListener("click", async () => {
-    const box = container.querySelector("#doc-reconcile-result");
-    try {
-      const res = await api.reconcileDocuments(proj.id, { date_tolerance_days: 3 });
-      box.classList.remove("hidden");
-      const s = res.summary || {};
-      box.innerHTML = `
-        <div class="fx-preview-banner tabular">
-          ${isEs ? "Conciliados" : "Matched"}: <strong>${s.matched || 0}</strong> (${fmtCurrency(s.matched_amount_decimal, proj.currency, lang)}) ·
-          ${isEs ? "Discrepancias" : "Mismatches"}: <strong>${s.amount_mismatch || 0}</strong> ·
-          ${isEs ? "Sin cruce" : "Unmatched"}: <strong>${s.unmatched || 0}</strong>
-        </div>`;
-    } catch (err) {
-      showToast(err.message, "error");
-    }
-  });
-
-  container.querySelectorAll("[data-doc-commit]").forEach((btn) =>
-    btn.addEventListener("click", async () => {
-      try {
-        const res = await api.commitDocument(proj.id, btn.dataset.docCommit, {});
-        showToast(
-          isEs ? `${res.rows_committed} registros ingestados al proyecto` : `${res.rows_committed} rows committed to project`,
-          "success"
+        panelEl.querySelectorAll("[data-doc-commit]").forEach((btn) =>
+          btn.addEventListener("click", async () => {
+            try {
+              const res = await api.commitDocument(proj.id, btn.dataset.docCommit, {});
+              showToast(
+                isEs ? `${res.rows_committed} registros ingestados al proyecto` : `${res.rows_committed} rows committed to project`,
+                "success"
+              );
+              if (typeof state.onProjectUpdated === "function") await state.onProjectUpdated();
+              await renderDocumentsTab(container, proj, lang);
+            } catch (err) {
+              showToast(err.message, "error");
+            }
+          })
         );
-        if (typeof state.onProjectUpdated === "function") await state.onProjectUpdated();
-        await renderDocumentsTab(container, proj, lang);
-      } catch (err) {
-        showToast(err.message, "error");
-      }
-    })
-  );
 
-  container.querySelectorAll("[data-doc-del]").forEach((btn) =>
-    btn.addEventListener("click", async () => {
-      await api.deleteDocument(proj.id, btn.dataset.docDel);
-      showToast(isEs ? "Documento eliminado" : "Document deleted", "success");
-      await renderDocumentsTab(container, proj, lang);
-    })
-  );
+        panelEl.querySelectorAll("[data-doc-del]").forEach((btn) =>
+          btn.addEventListener("click", async () => {
+            await api.deleteDocument(proj.id, btn.dataset.docDel);
+            showToast(isEs ? "Documento eliminado" : "Document deleted", "success");
+            await renderDocumentsTab(container, proj, lang);
+          })
+        );
+      },
+    },
+  ];
+
+  renderManagedDashboard({
+    container,
+    proj,
+    tabKey: "ai_ml_documents",
+    panels,
+    onRerender: () => renderDocumentsTab(container, proj, lang),
+  });
 }
 
 async function renderMarketAlertsTab(container, proj, lang) {
@@ -817,239 +842,270 @@ async function renderMarketAlertsTab(container, proj, lang) {
   const churnCusts = churnRes.available ? churnRes.customers || [] : [];
   const churnSum = churnRes.summary || {};
 
-  container.innerHTML = `
-    <div class="grid-2">
-      <!-- Market News & Sentiment -->
-      <div class="card">
-        <div class="card-header">
-          <div>
-            <h3 class="card-title">${t(lang, "market_sentiment_title")}</h3>
-            <p class="card-subtitle">${
-              isEs
-                ? "Analiza titulares sectoriales (RSS asíncrono o titulares personalizados) y mide impacto positivo/negativo."
-                : "Analyze sector headlines (async RSS or custom headlines) and classify positive/negative impact."
-            }</p>
+  const panels = [
+    {
+      id: "ai_mkt_sentiment",
+      title: t(lang, "market_sentiment_title"),
+      defaultSpan: 1,
+      renderHtml: () => `
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <h3 class="card-title">${t(lang, "market_sentiment_title")}</h3>
+              <p class="card-subtitle">${
+                isEs
+                  ? "Analiza titulares sectoriales (RSS asíncrono o titulares personalizados) y mide impacto positivo/negativo."
+                  : "Analyze sector headlines (async RSS or custom headlines) and classify positive/negative impact."
+              }</p>
+            </div>
           </div>
-        </div>
-        <div class="settings-section-box" style="margin:var(--space-3);">
-          <div class="copilot-composer-row">
-            <input id="mkt-query" type="text" class="input input-sm full-width" placeholder="${
-              isEs ? "Sector, activo o categoría (ej. retail latinoamérica)" : "Sector, ticker, or category (e.g. retail electronics)"
-            }" value="${escapeHtml(proj.name)}" />
-            <button type="button" id="mkt-fetch-btn" class="btn btn-primary btn-sm">${isEs ? "Analizar" : "Analyze"}</button>
+          <div class="settings-section-box" style="margin:var(--space-3);">
+            <div class="copilot-composer-row">
+              <input id="mkt-query" type="text" class="input input-sm full-width" placeholder="${
+                isEs ? "Sector, activo o categoría (ej. retail latinoamérica)" : "Sector, ticker, or category (e.g. retail electronics)"
+              }" value="${escapeHtml(proj.name)}" />
+              <button type="button" id="mkt-fetch-btn" class="btn btn-primary btn-sm">${isEs ? "Analizar" : "Analyze"}</button>
+            </div>
+            <div id="mkt-sentiment-output" class="fx-preview-banner hidden" style="margin-block-start:var(--space-2);"></div>
           </div>
-          <div id="mkt-sentiment-output" class="fx-preview-banner hidden" style="margin-block-start:var(--space-2);"></div>
-        </div>
-        <div id="mkt-news-cards" class="news-card-list"></div>
-      </div>
-
-      <!-- Smart Alerts & Executive Brief -->
-      <div class="card">
-        <div class="card-header">
-          <div>
-            <h3 class="card-title">${t(lang, "alerts_extras_title")}</h3>
-            <p class="card-subtitle">${isEs ? "Detectadas automáticamente sobre anomalías ML, margen y riesgo de clientes." : "Automatically detected across ML anomalies, margin leakage, and churn risk."}</p>
-          </div>
-          <span class="pill pill-amber tabular">${fmtNumber(alerts.length, 0, lang)}</span>
-        </div>
-        <div class="table-wrap" tabindex="0" role="region" aria-label="Smart project alerts">
-          ${
-            alerts.length
-              ? `<table class="data-table">
-                  <thead><tr><th>${isEs ? "Severidad" : "Severity"}</th><th>${isEs ? "Alerta" : "Alert"}</th><th>${isEs ? "Acción" : "Action"}</th></tr></thead>
-                  <tbody>
-                    ${alerts
-                      .map(
-                        (al) => `
-                      <tr>
-                        <td><span class="pill ${al.severity === "high" ? "pill-rose" : "pill-amber"}">${escapeHtml(al.severity)}</span></td>
-                        <td>
-                          <strong>${escapeHtml(al.title)}</strong>
-                          <div class="card-subtitle">${escapeHtml(al.body)}</div>
-                        </td>
-                        <td>
-                          ${
-                            al.acknowledged
-                              ? `<span class="pill pill-muted">✓</span>`
-                              : `<button type="button" class="btn btn-ghost btn-xs" data-ack-alert="${escapeHtml(al.id)}">${isEs ? "Revisada" : "Ack"}</button>`
-                          }
-                        </td>
-                      </tr>`
-                      )
-                      .join("")}
-                  </tbody>
-                </table>`
-              : `<div class="card-subtitle" style="padding:1.125rem;">${isEs ? "Sin alertas críticas activas en este proyecto." : "No active critical alerts for this project."}</div>`
+          <div id="mkt-news-cards" class="news-card-list"></div>
+        </div>`,
+      mount: (panelEl) => {
+        panelEl.querySelector("#mkt-fetch-btn")?.addEventListener("click", async (e) => {
+          const btn = e.currentTarget;
+          const outBox = panelEl.querySelector("#mkt-sentiment-output");
+          const cardsBox = panelEl.querySelector("#mkt-news-cards");
+          btn.disabled = true;
+          outBox.classList.remove("hidden");
+          outBox.textContent = isEs ? "Consultando feeds RSS y calculando sentimiento..." : "Fetching RSS feeds and scoring sentiment...";
+          try {
+            const res = await api.marketSentiment(proj.id, {
+              query: panelEl.querySelector("#mkt-query")?.value.trim() || proj.name,
+              lang,
+              use_cache: false,
+            });
+            outBox.innerHTML = `
+              <strong>${escapeHtml(res.executive_summary)}</strong>
+              <span class="pill ${res.overall_sentiment === "positive" ? "pill-emerald" : res.overall_sentiment === "negative" ? "pill-rose" : "pill-muted"} tabular" style="margin-inline-start:0.4rem;">
+                ${escapeHtml(res.overall_sentiment)} (${fmtNumber(res.avg_sentiment_score, 3, lang)})
+              </span>`;
+            const items = res.items || [];
+            cardsBox.innerHTML = items.length
+              ? items
+                  .slice(0, 6)
+                  .map(
+                    (it) => `
+                  <article class="news-item-card">
+                    <div class="card-header" style="padding:0;border:none;">
+                      <span class="pill ${it.sentiment_label === "positive" ? "pill-emerald" : it.sentiment_label === "negative" ? "pill-rose" : "pill-muted"}">
+                        ${it.sentiment_label === "positive" ? "▲" : it.sentiment_label === "negative" ? "▼" : "●"} ${escapeHtml(it.sentiment_label)} (${fmtNumber(it.sentiment_score, 2, lang)})
+                      </span>
+                      <span class="card-subtitle tabular">${escapeHtml(it.source || "RSS")}</span>
+                    </div>
+                    <strong style="font-size:var(--text-sm);">${escapeHtml(it.title)}</strong>
+                    ${it.link ? `<a href="${escapeHtml(it.link)}" target="_blank" rel="noopener noreferrer" class="card-subtitle">${isEs ? "Abrir fuente ↗" : "Open source ↗"}</a>` : ""}
+                  </article>`
+                  )
+                  .join("")
+              : `<div class="card-subtitle">${isEs ? "No se obtuvieron titulares en modo offline o para esa búsqueda." : "No headlines returned (offline or empty query)."}</div>`;
+          } catch (err) {
+            outBox.textContent = err.message;
+          } finally {
+            btn.disabled = false;
           }
-        </div>
-      </div>
-    </div>
-
-    <!-- AutoML Churn & CLV -->
-    <div class="card" style="margin-block-start:var(--space-4);">
-      <div class="card-header">
-        <div>
-          <h3 class="card-title">${isEs ? "AutoML — Predicción de Abandono (Churn) y CLV 90d" : "AutoML — Customer Churn Prediction & 90d CLV"}</h3>
-          <p class="card-subtitle tabular">
+        });
+      },
+    },
+    {
+      id: "ai_mkt_alerts",
+      title: t(lang, "alerts_extras_title"),
+      defaultSpan: 1,
+      renderHtml: () => `
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <h3 class="card-title">${t(lang, "alerts_extras_title")}</h3>
+              <p class="card-subtitle">${isEs ? "Detectadas automáticamente sobre anomalías ML, margen y riesgo de clientes." : "Automatically detected across ML anomalies, margin leakage, and churn risk."}</p>
+            </div>
+            <span class="pill pill-amber tabular">${fmtNumber(alerts.length, 0, lang)}</span>
+          </div>
+          <div class="table-wrap" tabindex="0" role="region" aria-label="Smart project alerts">
             ${
-              churnRes.available
-                ? `${isEs ? "Modelo" : "Model"}: ${escapeHtml(churnRes.model_used)} · ${isEs ? "Alto riesgo" : "High risk"}: <strong>${churnSum.high_risk_count || 0}</strong> (${fmtCurrency(churnSum.revenue_at_high_risk_decimal, proj.currency, lang)}) · CLV 90d: <strong>${fmtCurrency(churnSum.expected_clv_90d_total_decimal, proj.currency, lang)}</strong>`
-                : isEs
-                  ? "Requiere columnas de cliente, fecha e ingreso."
-                  : "Requires customer, date, and revenue columns."
+              alerts.length
+                ? `<table class="data-table">
+                    <thead><tr><th>${isEs ? "Severidad" : "Severity"}</th><th>${isEs ? "Alerta" : "Alert"}</th><th>${isEs ? "Acción" : "Action"}</th></tr></thead>
+                    <tbody>
+                      ${alerts
+                        .map(
+                          (al) => `
+                        <tr>
+                          <td><span class="pill ${al.severity === "high" ? "pill-rose" : "pill-amber"}">${escapeHtml(al.severity)}</span></td>
+                          <td>
+                            <strong>${escapeHtml(al.title)}</strong>
+                            <div class="card-subtitle">${escapeHtml(al.body)}</div>
+                          </td>
+                          <td>
+                            ${
+                              al.acknowledged
+                                ? `<span class="pill pill-muted">✓</span>`
+                                : `<button type="button" class="btn btn-ghost btn-xs" data-ack-alert="${escapeHtml(al.id)}">${isEs ? "Revisada" : "Ack"}</button>`
+                            }
+                          </td>
+                        </tr>`
+                        )
+                        .join("")}
+                    </tbody>
+                  </table>`
+                : `<div class="card-subtitle" style="padding:1.125rem;">${isEs ? "Sin alertas críticas activas en este proyecto." : "No active critical alerts for this project."}</div>`
             }
-          </p>
-        </div>
-      </div>
-      <div class="table-wrap table-wrap-scroll" tabindex="0" role="region" aria-label="Customer churn prediction">
-        ${
-          churnCusts.length
-            ? `<table class="data-table">
-                <thead>
-                  <tr>
-                    <th>${isEs ? "Cliente" : "Customer"}</th>
-                    <th>${isEs ? "Riesgo" : "Risk"}</th>
-                    <th class="num">${isEs ? "Prob. Churn" : "Churn Prob."}</th>
-                    <th class="num">CLV 90d</th>
-                    <th class="num">${isEs ? "Recencia (d)" : "Recency (d)"}</th>
-                    <th class="num">${isEs ? "Ingresos Hist." : "Hist. Revenue"}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${churnCusts
-                    .slice(0, 15)
-                    .map(
-                      (c) => `
-                    <tr>
-                      <td><strong>${escapeHtml(c.customer)}</strong></td>
-                      <td><span class="pill ${c.risk_tier === "high" ? "pill-rose" : c.risk_tier === "medium" ? "pill-amber" : "pill-emerald"}">${escapeHtml(c.risk_tier)}</span></td>
-                      <td class="num">${fmtPercent(c.churn_probability_pct, 1, lang)}</td>
-                      <td class="num">${fmtCurrency(c.expected_clv_90d, proj.currency, lang)}</td>
-                      <td class="num">${fmtNumber(c.recency_days, 0, lang)}</td>
-                      <td class="num">${fmtCurrency(c.historical_revenue, proj.currency, lang)}</td>
-                    </tr>`
-                    )
-                    .join("")}
-                </tbody>
-              </table>`
-            : `<div class="card-subtitle" style="padding:1.125rem;">${isEs ? "Sin datos de clientes suficientes para scoring de Churn." : "Insufficient customer data for churn scoring."}</div>`
-        }
-      </div>
-    </div>
-
-    <!-- Margin Leakage & Entity Resolution -->
-    <div class="grid-2" style="margin-block-start:var(--space-4);">
-      <div class="card">
-        <div class="card-header">
-          <h3 class="card-title">${isEs ? "Auditoría de Fuga de Margen por Descuentos" : "Discount Margin Leakage Audit"}</h3>
-          <span class="pill pill-rose tabular">${fmtNumber((leak.pockets || []).length, 0, lang)}</span>
-        </div>
-        <div class="table-wrap" tabindex="0" role="region" aria-label="Margin leakage pockets">
-          ${
-            (leak.pockets || []).length
-              ? `<table class="data-table">
-                  <thead><tr><th>${isEs ? "Dimensión" : "Dimension"}</th><th>${isEs ? "Segmento" : "Segment"}</th><th class="num">${isEs ? "Desc. %" : "Disc. %"}</th><th class="num">${isEs ? "Margen %" : "Margin %"}</th><th class="num">${isEs ? "Fuga Est." : "Est. Leakage"}</th></tr></thead>
-                  <tbody>
-                    ${leak.pockets
-                      .slice(0, 8)
-                      .map(
-                        (pk) => `
+          </div>
+        </div>`,
+      mount: (panelEl) => {
+        panelEl.querySelectorAll("[data-ack-alert]").forEach((btn) =>
+          btn.addEventListener("click", async () => {
+            await api.acknowledgeAlert(proj.id, btn.dataset.ackAlert);
+            showToast(isEs ? "Alerta marcada como revisada" : "Alert acknowledged", "success");
+            await renderMarketAlertsTab(container, proj, lang);
+          })
+        );
+      },
+    },
+    {
+      id: "ai_mkt_churn",
+      title: t(lang, "churn_clv_title"),
+      defaultSpan: 2,
+      renderHtml: () => `
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <h3 class="card-title">${t(lang, "churn_clv_title")}</h3>
+              <p class="card-subtitle tabular">
+                ${
+                  churnRes.available
+                    ? `${isEs ? "Modelo" : "Model"}: ${escapeHtml(churnRes.model_used)} · ${isEs ? "Alto riesgo" : "High risk"}: <strong>${churnSum.high_risk_count || 0}</strong> (${fmtCurrency(churnSum.revenue_at_high_risk_decimal, proj.currency, lang)}) · CLV 90d: <strong>${fmtCurrency(churnSum.expected_clv_90d_total_decimal, proj.currency, lang)}</strong>`
+                    : isEs
+                      ? "Requiere columnas de cliente, fecha e ingreso."
+                      : "Requires customer, date, and revenue columns."
+                }
+              </p>
+            </div>
+          </div>
+          <div class="table-wrap table-wrap-scroll" tabindex="0" role="region" aria-label="Customer churn prediction">
+            ${
+              churnCusts.length
+                ? `<table class="data-table">
+                    <thead>
                       <tr>
-                        <td><span class="pill pill-muted">${escapeHtml(pk.dimension)}</span></td>
-                        <td>${escapeHtml(pk.segment)}</td>
-                        <td class="num">${fmtPercent(pk.discount_pct, 1, lang)}</td>
-                        <td class="num">${fmtPercent(pk.margin_pct, 1, lang)}</td>
-                        <td class="num delta-neg">${fmtCurrency(pk.estimated_leakage_decimal, proj.currency, lang)}</td>
-                      </tr>`
-                      )
-                      .join("")}
-                  </tbody>
-                </table>`
-              : `<div class="card-subtitle" style="padding:1.125rem;">${isEs ? "No se detectaron focos severos de fuga de margen." : "No severe discount margin leakage pockets detected."}</div>`
-          }
-        </div>
-      </div>
+                        <th>${isEs ? "Cliente" : "Customer"}</th>
+                        <th>${isEs ? "Riesgo" : "Risk"}</th>
+                        <th class="num">${isEs ? "Prob. Churn" : "Churn Prob."}</th>
+                        <th class="num">CLV 90d</th>
+                        <th class="num">${isEs ? "Recencia (d)" : "Recency (d)"}</th>
+                        <th class="num">${isEs ? "Ingresos Hist." : "Hist. Revenue"}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${churnCusts
+                        .slice(0, 15)
+                        .map(
+                          (c) => `
+                        <tr>
+                          <td><strong>${escapeHtml(c.customer)}</strong></td>
+                          <td><span class="pill ${c.risk_tier === "high" ? "pill-rose" : c.risk_tier === "medium" ? "pill-amber" : "pill-emerald"}">${escapeHtml(c.risk_tier)}</span></td>
+                          <td class="num">${fmtPercent(c.churn_probability_pct, 1, lang)}</td>
+                          <td class="num">${fmtCurrency(c.expected_clv_90d, proj.currency, lang)}</td>
+                          <td class="num">${fmtNumber(c.recency_days, 0, lang)}</td>
+                          <td class="num">${fmtCurrency(c.historical_revenue, proj.currency, lang)}</td>
+                        </tr>`
+                        )
+                        .join("")}
+                    </tbody>
+                  </table>`
+                : `<div class="card-subtitle" style="padding:1.125rem;">${isEs ? "Sin datos de clientes suficientes para scoring de Churn." : "Insufficient customer data for churn scoring."}</div>`
+            }
+          </div>
+        </div>`,
+      mount: () => {},
+    },
+    {
+      id: "ai_mkt_leakage",
+      title: t(lang, "margin_leakage_title"),
+      defaultSpan: 1,
+      renderHtml: () => `
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">${t(lang, "margin_leakage_title")}</h3>
+            <span class="pill pill-rose tabular">${fmtNumber((leak.pockets || []).length, 0, lang)}</span>
+          </div>
+          <div class="table-wrap" tabindex="0" role="region" aria-label="Margin leakage pockets">
+            ${
+              (leak.pockets || []).length
+                ? `<table class="data-table">
+                    <thead><tr><th>${isEs ? "Dimensión" : "Dimension"}</th><th>${isEs ? "Segmento" : "Segment"}</th><th class="num">${isEs ? "Desc. %" : "Disc. %"}</th><th class="num">${isEs ? "Margen %" : "Margin %"}</th><th class="num">${isEs ? "Fuga Est." : "Est. Leakage"}</th></tr></thead>
+                    <tbody>
+                      ${leak.pockets
+                        .slice(0, 8)
+                        .map(
+                          (pk) => `
+                        <tr>
+                          <td><span class="pill pill-muted">${escapeHtml(pk.dimension)}</span></td>
+                          <td>${escapeHtml(pk.segment)}</td>
+                          <td class="num">${fmtPercent(pk.discount_pct, 1, lang)}</td>
+                          <td class="num">${fmtPercent(pk.margin_pct, 1, lang)}</td>
+                          <td class="num delta-neg">${fmtCurrency(pk.estimated_leakage_decimal, proj.currency, lang)}</td>
+                        </tr>`
+                        )
+                        .join("")}
+                    </tbody>
+                  </table>`
+                : `<div class="card-subtitle" style="padding:1.125rem;">${isEs ? "No se detectaron focos severos de fuga de margen." : "No severe discount margin leakage pockets detected."}</div>`
+            }
+          </div>
+        </div>`,
+      mount: () => {},
+    },
+    {
+      id: "ai_mkt_entities",
+      title: t(lang, "entity_res_title"),
+      defaultSpan: 1,
+      renderHtml: () => `
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">${t(lang, "entity_res_title")}</h3>
+            <span class="pill pill-accent tabular">${fmtNumber(ent.total_candidates || 0, 0, lang)}</span>
+          </div>
+          <div class="table-wrap" tabindex="0" role="region" aria-label="Duplicate entity candidates">
+            ${
+              (ent.products?.length || ent.customers?.length)
+                ? `<table class="data-table">
+                    <thead><tr><th>${isEs ? "Canónico" : "Canonical"}</th><th>${isEs ? "Variante" : "Variant"}</th><th class="num">${isEs ? "Similitud" : "Similarity"}</th></tr></thead>
+                    <tbody>
+                      ${[...(ent.products || []), ...(ent.customers || [])]
+                        .slice(0, 10)
+                        .map(
+                          (d) => `
+                        <tr>
+                          <td><strong>${escapeHtml(d.canonical_suggestion)}</strong></td>
+                          <td>${escapeHtml(d.variant)}</td>
+                          <td class="num">${fmtPercent(d.similarity_pct, 1, lang)}</td>
+                        </tr>`
+                        )
+                        .join("")}
+                    </tbody>
+                  </table>`
+                : `<div class="card-subtitle" style="padding:1.125rem;">${isEs ? "Catálogos de productos y clientes consistentes (sin duplicados tipográficos)." : "Product and customer names look clean (no near-duplicates found)."}</div>`
+            }
+          </div>
+        </div>`,
+      mount: () => {},
+    },
+  ];
 
-      <div class="card">
-        <div class="card-header">
-          <h3 class="card-title">${isEs ? "Entity Resolution (Duplicados Sugeridos)" : "Entity Resolution (Duplicate Candidates)"}</h3>
-          <span class="pill pill-accent tabular">${fmtNumber(ent.total_candidates || 0, 0, lang)}</span>
-        </div>
-        <div class="table-wrap" tabindex="0" role="region" aria-label="Duplicate entity candidates">
-          ${
-            (ent.products?.length || ent.customers?.length)
-              ? `<table class="data-table">
-                  <thead><tr><th>${isEs ? "Canónico" : "Canonical"}</th><th>${isEs ? "Variante" : "Variant"}</th><th class="num">${isEs ? "Similitud" : "Similarity"}</th></tr></thead>
-                  <tbody>
-                    ${[...(ent.products || []), ...(ent.customers || [])]
-                      .slice(0, 10)
-                      .map(
-                        (d) => `
-                      <tr>
-                        <td><strong>${escapeHtml(d.canonical_suggestion)}</strong></td>
-                        <td>${escapeHtml(d.variant)}</td>
-                        <td class="num">${fmtPercent(d.similarity_pct, 1, lang)}</td>
-                      </tr>`
-                      )
-                      .join("")}
-                  </tbody>
-                </table>`
-              : `<div class="card-subtitle" style="padding:1.125rem;">${isEs ? "Catálogos de productos y clientes consistentes (sin duplicados tipográficos)." : "Product and customer names look clean (no near-duplicates found)."}</div>`
-          }
-        </div>
-      </div>
-    </div>
-  `;
-
-  container.querySelectorAll("[data-ack-alert]").forEach((btn) =>
-    btn.addEventListener("click", async () => {
-      await api.acknowledgeAlert(proj.id, btn.dataset.ackAlert);
-      showToast(isEs ? "Alerta marcada como revisada" : "Alert acknowledged", "success");
-      await renderMarketAlertsTab(container, proj, lang);
-    })
-  );
-
-  container.querySelector("#mkt-fetch-btn")?.addEventListener("click", async (e) => {
-    const btn = e.currentTarget;
-    const outBox = container.querySelector("#mkt-sentiment-output");
-    const cardsBox = container.querySelector("#mkt-news-cards");
-    btn.disabled = true;
-    outBox.classList.remove("hidden");
-    outBox.textContent = isEs ? "Consultando feeds RSS y calculando sentimiento..." : "Fetching RSS feeds and scoring sentiment...";
-    try {
-      const res = await api.marketSentiment(proj.id, {
-        query: container.querySelector("#mkt-query")?.value.trim() || proj.name,
-        lang,
-        use_cache: false,
-      });
-      outBox.innerHTML = `
-        <strong>${escapeHtml(res.executive_summary)}</strong>
-        <span class="pill ${res.overall_sentiment === "positive" ? "pill-emerald" : res.overall_sentiment === "negative" ? "pill-rose" : "pill-muted"} tabular" style="margin-inline-start:0.4rem;">
-          ${escapeHtml(res.overall_sentiment)} (${fmtNumber(res.avg_sentiment_score, 3, lang)})
-        </span>`;
-      const items = res.items || [];
-      cardsBox.innerHTML = items.length
-        ? items
-            .slice(0, 6)
-            .map(
-              (it) => `
-            <article class="news-item-card">
-              <div class="card-header" style="padding:0;border:none;">
-                <span class="pill ${it.sentiment_label === "positive" ? "pill-emerald" : it.sentiment_label === "negative" ? "pill-rose" : "pill-muted"}">
-                  ${it.sentiment_label === "positive" ? "▲" : it.sentiment_label === "negative" ? "▼" : "●"} ${escapeHtml(it.sentiment_label)} (${fmtNumber(it.sentiment_score, 2, lang)})
-                </span>
-                <span class="card-subtitle tabular">${escapeHtml(it.source || "RSS")}</span>
-              </div>
-              <strong style="font-size:var(--text-sm);">${escapeHtml(it.title)}</strong>
-              ${it.link ? `<a href="${escapeHtml(it.link)}" target="_blank" rel="noopener noreferrer" class="card-subtitle">${isEs ? "Abrir fuente ↗" : "Open source ↗"}</a>` : ""}
-            </article>`
-            )
-            .join("")
-        : `<div class="card-subtitle">${isEs ? "No se obtuvieron titulares en modo offline o para esa búsqueda." : "No headlines returned (offline or empty query)."}</div>`;
-    } catch (err) {
-      outBox.textContent = err.message;
-    } finally {
-      btn.disabled = false;
-    }
+  renderManagedDashboard({
+    container,
+    proj,
+    tabKey: "ai_ml_market",
+    panels,
+    onRerender: () => renderMarketAlertsTab(container, proj, lang),
   });
 }
