@@ -162,7 +162,6 @@ async function openProject(projectId, tab = "overview") {
   const detail = await api.getProject(projectId);
   state.activeProject = detail;
   state.activeTab = tab;
-  state.customizingView = false;
   state.filters = defaultFilters(state.lang);
 
   updateProjectHeaderCrumb(detail);
@@ -183,7 +182,6 @@ async function goHub() {
   disposeChartsIn(viewContainer);
   setCopilotOpen(false);
   state.activeProject = null;
-  state.customizingView = false;
   updateChromeVisibility(false);
   await renderHub(viewContainer, openProject);
 }

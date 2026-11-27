@@ -990,12 +990,6 @@
     font-size: var(--text-2xs);
   }
 
-  .btn-customize-active {
-    background: var(--accent-soft);
-    color: var(--accent);
-    border-color: var(--accent);
-  }
-
   .form-grid-3 {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(11.5rem, 1fr));
@@ -1165,7 +1159,7 @@
 
   .panel-drag-handle[aria-pressed="true"] {
     background: var(--accent);
-    color: var(--accent-contrast, #ffffff);
+    color: var(--accent-contrast);
     border-color: var(--accent);
   }
 

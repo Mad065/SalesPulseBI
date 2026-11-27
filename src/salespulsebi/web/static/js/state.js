@@ -91,7 +91,6 @@ export const state = {
   projects: [],
   activeProject: null,
   activeTab: "overview",
-  customizingView: false,
   filters: null,
   filterOptions: null,
   onFilterChange: null,
